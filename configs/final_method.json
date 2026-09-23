@@ -1,0 +1,32 @@
+{
+  "method": "projection-guided remainder stratification",
+  "projection_dimension": 64,
+  "projection_seed": 20260916,
+  "projection_distribution": "iid N(0,1/64)",
+  "score": "squared Euclidean distance in fixed projected space",
+  "exact_subset_size": "floor(M/4)",
+  "remainder_strata": 8,
+  "strata": "consecutive equal-population blocks, sizes differ by at most one",
+  "tie_breaking": "reference identifier",
+  "allocation": "minimum-one then proportional to residual capacities",
+  "kernel": "Gaussian in preprocessed original feature space",
+  "target": "full reference kernel mean, denominator n",
+  "bandwidth": "frozen per-dataset metadata; no retuning",
+  "budgets": [
+    32,
+    64,
+    128,
+    256,
+    512
+  ],
+  "sampling_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "kernel_rng_seed": "sampling_seed + query_id * 100003",
+  "portable_wrapper_timing_is_paper_timing": false,
+  "baseline_table1": "validation-selected official DEANN-E; E=O for Amazon"
+}

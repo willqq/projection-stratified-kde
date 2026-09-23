@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "files": [
+    "scripts/reproduce_tables.py",
+    "scripts/verify_release.py",
+    "scripts/fetch_data.py",
+    "scripts/run_projection.py",
+    "scripts/verify_core.py",
+    "scripts/check_data.py",
+    "scripts/plot_latency.py",
+    "src/projected_kde/__init__.py",
+    "src/projected_kde/model.py",
+    "src/projected_kde/_frozen/sprint_estimator.py",
+    "src/projected_kde/_frozen/__init__.py",
+    "src/projected_kde/_frozen/sprint_projection.py"
+  ]
+}

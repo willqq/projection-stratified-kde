@@ -1,0 +1,1 @@
+print("calculate()".split("\n")[0] )

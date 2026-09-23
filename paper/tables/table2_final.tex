@@ -1,0 +1,16 @@
+\begin{tabular}{lccccccc}
+\toprule
+& \multicolumn{3}{c}{A: fixed-population variance ratio} & \multicolumn{4}{c}{B: matched-$H$ remainder comparison} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-8}
+Dataset / queries & Projected & Random & Ordered & Single (\%) & Multi (\%) & Gain (\%) & 95\% CI \\
+\midrule
+ISOLET / test & 0.739 & 1.000 & 0.691 & 14.1 & 11.0 & 21.8 & [16.5, 26.8] \\
+CIFAR-10-Small / test & 0.596 & 1.000 & 0.492 & 14.9 & 11.2 & 24.5 & [19.1, 29.4] \\
+GIST-512 / test & 0.627 & 1.000 & 0.381 & 13.4 & 10.5 & 21.3 & [16.3, 26.1] \\
+Amazon / test & 0.606 & 1.000 & 0.214 & 8.2 & 6.8 & 17.7 & [12.6, 22.7] \\
+\midrule
+ISOLET / audit & 0.739 & 1.000 & 0.676 & 15.0 & 11.7 & 22.3 & [17.6, 26.8] \\
+CIFAR-10-Small / audit & 0.597 & 1.000 & 0.515 & 14.8 & 11.6 & 21.7 & [16.5, 26.7] \\
+GIST-512 / audit & 0.647 & 1.000 & 0.402 & 14.0 & 10.9 & 22.2 & [16.7, 27.5] \\
+\bottomrule
+\end{tabular}

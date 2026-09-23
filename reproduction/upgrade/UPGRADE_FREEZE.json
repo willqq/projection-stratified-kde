@@ -1,0 +1,101 @@
+{
+  "path_a": true,
+  "path_b_anchors": [
+    "O",
+    "E",
+    "T"
+  ],
+  "unix": 1789894162.2817044,
+  "reason": "Both preregistered validation feasibility gates passed. All frozen E/T curves retained on all four datasets; O is Amazon E alias. No test selection.",
+  "validation_gate": {
+    "path_a": true,
+    "path_b": true,
+    "scope": "validation feasibility only",
+    "qualified_a": [
+      {
+        "dataset": "cifar10_gist512",
+        "n": 20000,
+        "budgets": [
+          64,
+          128,
+          256
+        ]
+      }
+    ],
+    "qualified_b": [
+      {
+        "dataset": "amazon",
+        "n": 720,
+        "anchor": "O",
+        "budgets": [
+          64,
+          128,
+          256
+        ]
+      },
+      {
+        "dataset": "amazon",
+        "n": 720,
+        "anchor": "T",
+        "budgets": [
+          64,
+          128,
+          256
+        ]
+      },
+      {
+        "dataset": "cifar10",
+        "n": 1800,
+        "anchor": "E",
+        "budgets": [
+          64,
+          128,
+          256
+        ]
+      },
+      {
+        "dataset": "cifar10",
+        "n": 1800,
+        "anchor": "T",
+        "budgets": [
+          64,
+          128,
+          256
+        ]
+      },
+      {
+        "dataset": "cifar10_gist512",
+        "n": 1800,
+        "anchor": "E",
+        "budgets": [
+          64,
+          128,
+          256
+        ]
+      },
+      {
+        "dataset": "isolet",
+        "n": 1800,
+        "anchor": "E",
+        "budgets": [
+          64,
+          128,
+          256
+        ]
+      },
+      {
+        "dataset": "isolet",
+        "n": 1800,
+        "anchor": "T",
+        "budgets": [
+          64,
+          128,
+          256
+        ]
+      }
+    ]
+  },
+  "source_head": "f872802ae4cca95ec69376d548c8389627de8761",
+  "gate_sha256": "3b72fad75b86aa1f3dbd5a3d3442eb52b5768eae8ad49e8dd46ce8cac3cc1e38",
+  "old_test_audit_exposed": true
+}

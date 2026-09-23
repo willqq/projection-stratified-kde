@@ -1,0 +1,44 @@
+{
+  "dataset": "cifar10",
+  "raw_shape": [
+    10000,
+    3072
+  ],
+  "split_counts": {
+    "train": 2800,
+    "reference": 1800,
+    "validation": 80,
+    "test": 200
+  },
+  "data_file": "cifar-10-batches-py/data_batch_1",
+  "data_sha256": "54636561a3ce25bd3e19253c6b0d8538147b0ae398331ac4a2d86c6d987368cd",
+  "training": {
+    "tables": 12,
+    "bits": 5,
+    "epochs": 24,
+    "batch_size": 128,
+    "lr": 0.001,
+    "alpha": 1.0,
+    "beta": 0.1,
+    "gamma_balance": 0.1,
+    "gamma_decorrelation": 0.1,
+    "device": "cpu"
+  },
+  "model_seed": 20260915,
+  "model_sha256": "7193b3610dcf9bb7cf826a85a7e36730826baf22381f217e6f84000f9eabd81c",
+  "preprocessing_sha256": "83b63f8a7bf35d84057e862534c71a4408d6a6e2161f21e007d21d83f26196e7",
+  "split_sha256": "5bfde411d345fe56c2d4ebcf29ad1cca71b7ed6177e09c48b453aab543f2e80c",
+  "train_seconds": 6.10520526766777,
+  "validation_calibration_seconds": 0.20254134386777878,
+  "radius": 40.409047241613436,
+  "bandwidth": 8.112781990558453,
+  "delta": 8.040456771850586,
+  "layers": 8,
+  "min_collisions": 2,
+  "hamming_probe": 2,
+  "radius_rule": "median validation-query 70th distance percentile",
+  "bandwidth_rule": ".25 * median validation-query 25th distance percentile",
+  "preprocessing": "MinMax fitted on training only; common 2*x+training max-norm anchor",
+  "code_at_training": "f3332318aa5ffdece0aa0c14d99cc19f8b905bea",
+  "peak_rss_kib": 799112
+}

@@ -1,0 +1,282 @@
+{
+  "frozen_before_formal_evaluation": true,
+  "freeze_time_unix": 1789493791.640994,
+  "source_commit": "59d86dbfaaeebb7bdaace151afcec047f3e1a360",
+  "source_hashes": {
+    "_posting_index.cpython-38-x86_64-linux-gnu.so": "339f40ed380f236fce60db48e355e37967ea314db2500a2ea618aeece8abc320",
+    "aggregate_final.py": "d263389b04050c021506c4b1aa00905ce79ff7111d915e6482be44531b49bb60",
+    "aggregate_plot.py": "5814350f39b4127f2070d25cc3b49192515c05e045a030cb44cae61a06728e50",
+    "audit_results.py": "281bf9bc8e2c67e891490619e3ff16c71d82d79ee07e5e25791a16699ed5d929",
+    "build_posting_index.py": "fe4c1745f3e99d00216ab7cc2146b837fbd14ba292157ccdaa0bd415a100e0fb",
+    "calib.py": "6312cf253aee5d1e6330423aaa178d2dd8773f04fc3b83af749bf569712f90d9",
+    "convergence.py": "2841fb072c779534314ece606c83d5c5906d1f40f8e9b86ba66e4ea4035b649d",
+    "core.py": "7d84c3113ea25cd2dbd79515b0d4e261f5cdb60641b607a74cd46c7ca598ae23",
+    "deann_adapter.py": "58783ffc6675de10e60a2b7a000adf131755e33c82977e4e56ee51fc0590201c",
+    "diagnose.py": "11967bf11a33b67955451ed566b77d576ee9b0322d676b5f26950574d394e52f",
+    "fast_core.py": "7814dba6658c3434340a0ecf45920dfd59c608f97aa8c020da6d51933427b98a",
+    "fast_partition.py": "0d33d0c1724bc102aedb10ae2152e3169915d52f4559c1385e5b9abc53111a07",
+    "final_index.py": "7ec9b63138ff9cbaab120c23f7829021e7bb67e3ce8b7a90caac6009bb59cb18",
+    "final_run.py": "f8a5a518a5fcc52cb0db0b7ee29bd2c893babbed2d3c004d0831548a0a76f3f1",
+    "mechanism.py": "bc10ce6c1ab6addaf458ec4e524f150fcca1432900ed67e428a889deece8a808",
+    "mechanism_final.py": "cd9831ea095490d64c4f774fcbcebc273625684be22502d80d5a976dd3a95468",
+    "posting_index.cpp": "64a4dc32313f903caea18ef94afe512e9ee4876659c04d51b3432372565bbc66",
+    "replay_all.py": "9ebabb4a8c50060edee08c862b566eb49e2dbc249e85e91d4ab27a4cecf1aac3",
+    "run.py": "80f3ff3655cdb66b2fa7b4e7cf8cec0b048eb0cd928f6f7abc4733db00bdb28f",
+    "run_deann.py": "efc82a8042db50fcd12f7564b42a4b92c946c091709628418e5365306c7d91f2",
+    "search.py": "5d5dadb347b4c0fcb63d49d347e751bce8c75dc054c2cffdc978ae2a763dbb18",
+    "sprint_b1_screen.py": "3321c2501ca8922da8e7d9c8efec3d511dd39086f15fa420aba744140d5fb4ed",
+    "sprint_common.py": "9a0646f61a851986595855d5efa62017c1ef33283db026c3ea7a89674d0afa8a",
+    "sprint_control_refresh.py": "79addc109a0ca03a9f7917978bd1f5561b4af607ca8300aed232a5b030c9db8d",
+    "sprint_estimator.py": "3c08f78687d93459a428e199e3e4fdb3d30365ed1bc3cbb58bc46c845c6a7b85",
+    "sprint_evaluator.py": "7210901b23b1f717bfcf5d4b23b41c67a210a202ae865813b1b085e0c23cf4b5",
+    "sprint_finalists.py": "c2208761ac2fd4802e52a59d4fd0b11cda1a60c2b44cfb5c6021d5bbe9cc8f8f",
+    "sprint_fixed_c_final.py": "439dce1cbd4bfd68ca7eabd7f1b1b79edbbf122cf297b21dd82ee0e5e97f5443",
+    "sprint_formal.py": "3740e974f442c707d6fa61b1623bbd45caac6cba782ee989cb96d1afeedc716f",
+    "sprint_freeze.py": "c736fdb614235f1c5e646a11318aade4f5e609ca7b87eb60516720f0f61d5cb3",
+    "sprint_group_diagnostics.py": "e06d11557f109d6e2bda3509980f7255e9cbe7832ca866eaddb69fdbae8857a9",
+    "sprint_projection.py": "b6ae33e4efaf91e445bdbcc02f87af16e49add0f33c040b480ea688172db2b28",
+    "sprint_scores.py": "73cda02ef2474dca799e2d15252c29103b085a43a70cc98ac62d33d2eed77f6e",
+    "sprint_select.py": "8c379d8fbe98a0562cb0a1013848dc6dffb89b5b43b6caf5bfb0e901577f4fcb",
+    "sprint_smoke.py": "d25320a6eef53b2978b4dac823e89a7f076b7f51fa996f731bb74c2d9441b3de",
+    "sprint_validate.py": "02d72179724d137c5684a9cff282b16c26aee4ee164036fc451493e4a7736be1",
+    "test_core.py": "425d0b93b7460d58be59e656ac2313ce0e6ddcf061cfc7de8d03df8723f6716e",
+    "test_deann.py": "b15b6c11173cc3b1469f7242e14059aa872cb8f3155252bcdd01e620a0ec8692",
+    "test_fast_partition.py": "3f850f2568e3d5e4e31fe8ca339568c108320444f8d8e48eddf28d61c02140da",
+    "test_sprint_estimator.py": "beef9d96229005e19e6e35746389085f450799d1d817e3780c395df5284e8db0"
+  },
+  "method_config": {
+    "score": "projection64",
+    "J": 8,
+    "H_fraction": 0.25,
+    "grouping": "quantile",
+    "full_target": true,
+    "allocation": "proportional"
+  },
+  "selected": "b1a_projection64",
+  "validation_selection_sha256": "a2d78913f268171d04fd9a2d6945c750c736ed41263438bfae6aabaa3f7189a6",
+  "audit_ids_sha256": "cdfe9b29de5c9c3178596651ab17490dffbdf4437aa45f800ab099ed9d6e7c2c",
+  "model_and_calibration_hashes": {
+    "models/projection64/amazon/metadata.json": "ae76c67b4493f324daaa6c60e77f11f8ec03831248209bbab6e47706fa179df1",
+    "models/projection64/amazon/projection64.npz": "e9c36ae2475979e5670ea68417a75e7d862a9f4b87197412cf8476151b44fbe8",
+    "models/projection64/cifar10/metadata.json": "b2ae35b0a7ff9d323822d09143aa86cecd1040bead4c5510df48d22a3d5bb5f6",
+    "models/projection64/cifar10/projection64.npz": "c9e5bfd7d245e131620115b39cd75791f2ab0e392419598ff04fd25da1c4cac1",
+    "models/projection64/cifar10_gist512/metadata.json": "00c986e2d2d2ff0ddad1f96b1649dc7264ee98a3234315b5a40fe91ef7ac25cf",
+    "models/projection64/cifar10_gist512/projection64.npz": "75d43defe4e154078b29661457b54883678d0e00adb7bec5cfae83206e09e749",
+    "models/projection64/isolet/metadata.json": "e95d6c253173a63211e37ff6d7253f1292c698247b5a159180d1a1ef56f83b22",
+    "models/projection64/isolet/projection64.npz": "76a046ba2a203517dea468921e5df2c56ab1b13ac36e680173ab123769a66318",
+    "models/score_calibration/amazon/calibration.npz": "fb5e478d309caa1f4f13e000a832fc1d5e48208612b213a3c5828409d14b40fa",
+    "models/score_calibration/amazon/metadata.json": "8c78d59527a47e93b91e1baf82fa0439b7606e185ef6866335ff99608e1ebd1c",
+    "models/score_calibration/cifar10/calibration.npz": "af6dc166188270a89ff644f2d6755a9093a66226f97894490e04eb29339d3ad8",
+    "models/score_calibration/cifar10/metadata.json": "a56d3b6721fdc8e581f6ba09043537ab66608e93cc98dda6b4b77378830333ab",
+    "models/score_calibration/cifar10_gist512/calibration.npz": "95381d49b77fd545fecb67b23059673e95f192e4ed5f07beb959f5a90e9eee5b",
+    "models/score_calibration/cifar10_gist512/metadata.json": "34dc675bc9abf1610dac4479aa1c7712e886d00a504e53324c307b4d51b49d1b",
+    "models/score_calibration/isolet/calibration.npz": "8aa4e57df73537f69382b78a7ce28087d42c1988d18701e524b025ad839ab22d",
+    "models/score_calibration/isolet/metadata.json": "d715b70fbce0b56d08e2a71ce25846137bb6dac9e47570667765da0e6c20ccfb"
+  },
+  "projection": {
+    "dimension": 64,
+    "seed": 20260916,
+    "distribution": "Gaussian N(0,1/64)",
+    "training_mean_centering": true,
+    "reference_scan": "all reference projections",
+    "kernel_space": "unchanged original transformed d-dimensional features"
+  },
+  "budgets": [
+    32,
+    64,
+    128,
+    256,
+    512
+  ],
+  "sampling_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "test_queries": 200,
+  "audit_queries": {
+    "isolet": 200,
+    "cifar10": 200,
+    "cifar10_gist512": 200,
+    "amazon": 0
+  },
+  "timing_repeats": 3,
+  "threads": 8,
+  "old_test_status": "Previously exposed, used only for controlled new/old comparison; audit locked before sprint validation",
+  "timing_boundary": "Same transformed query vector for every method. All online projection/retrieval/sorting/strata/allocation/kernel steps included. Raw transform measured separately. No concurrent experimental computation.",
+  "basic_rng_rule": "seed+query_id*100003; reset for each of three timing repeats",
+  "deann_rng_rule": "Official permuted estimator; one warmup, three advancing sampler calls per query; first value supplies error",
+  "matched_control": "Same H and total M. Projection single remainder reuses ranked[k:]. Final proportional rows reused as identical matched_proportional control; Neyman separately measured.",
+  "datasets": {
+    "isolet": {
+      "data_sha256": "aa935cc98ec22ee689aa5b2ddf1fdce074692f7016f0255f0982df133ccbab38",
+      "split_sha256": "af5fc0a3c2f9c5b83efbce6b8eec7195056da1d2b3766c7e2f3f663b537d1623",
+      "preprocessing_sha256": "88d26b69104ab6e79699fa192f2f68682e6677a68f2a733b557eab37277013ae",
+      "model_sha256": "c0d3e330a42cff0cb783d8c67b8b67f5070f1537151a97991fdba42f1305a80e",
+      "selected_epoch": 24,
+      "training_rule": "prospective common aggregate validation angular early stopping",
+      "n": 1800,
+      "d": 617,
+      "bandwidth": 3.398967249781461,
+      "outer_radius": 16.77281257749005,
+      "delta": 3.7912557125091553,
+      "deann": {
+        "nprobe": 4,
+        "near_fraction": 0.5,
+        "nlist": 32,
+        "selected_before_test": true,
+        "source": {
+          "official_commit": "6dfb28370d6ed50a0aef53ece111fa449503554e",
+          "variant": "AnnEstimatorPermuted",
+          "ann_backend": "official FaissIVF wrapper",
+          "nlist_rule": "min(32, floor(n/40))",
+          "nprobe_validation_candidates": [
+            1,
+            4
+          ],
+          "near_fraction_validation_candidates": [
+            0.25,
+            0.5
+          ],
+          "validation_budget": 128,
+          "validation_queries": 20,
+          "selection_rule": "Minimum validation MARE among four pairs at M=128; tie uses lower complete latency; freeze before test. All formal budgets retained."
+        },
+        "code_commit": "a762de8f506efc4e3d70af94cd2e021ae33e160f",
+        "shared_reference_sha256": "aa935cc98ec22ee689aa5b2ddf1fdce074692f7016f0255f0982df133ccbab38",
+        "model_seed": 20260915,
+        "deann_extension_sha256": "0441e55b527776f7260bb0108462b3f32f2a549fd66e5d12dc07c09f75ac5c13"
+      },
+      "legacy_c5_model_sha256": "0ea5d5ed4cf0c937a7d518ded7f8f7e099a8dee21074e8ea2b81926f50541383",
+      "legacy_source_model_note": "For current_approx comparator only; final estimator uses projection64 cache"
+    },
+    "cifar10": {
+      "data_sha256": "54636561a3ce25bd3e19253c6b0d8538147b0ae398331ac4a2d86c6d987368cd",
+      "split_sha256": "5bfde411d345fe56c2d4ebcf29ad1cca71b7ed6177e09c48b453aab543f2e80c",
+      "preprocessing_sha256": "83b63f8a7bf35d84057e862534c71a4408d6a6e2161f21e007d21d83f26196e7",
+      "model_sha256": "908805f4b63137c0778211b06f4a8d4095bc87290a3c8c41474490e72c909006",
+      "selected_epoch": 24,
+      "training_rule": "prospective common aggregate validation angular early stopping",
+      "n": 1800,
+      "d": 3072,
+      "bandwidth": 8.112781990558453,
+      "outer_radius": 40.409047241613436,
+      "delta": 8.040456771850586,
+      "deann": {
+        "nprobe": 4,
+        "near_fraction": 0.25,
+        "nlist": 32,
+        "selected_before_test": true,
+        "source": {
+          "official_commit": "6dfb28370d6ed50a0aef53ece111fa449503554e",
+          "variant": "AnnEstimatorPermuted",
+          "ann_backend": "official FaissIVF wrapper",
+          "nlist_rule": "min(32, floor(n/40))",
+          "nprobe_validation_candidates": [
+            1,
+            4
+          ],
+          "near_fraction_validation_candidates": [
+            0.25,
+            0.5
+          ],
+          "validation_budget": 128,
+          "validation_queries": 20,
+          "selection_rule": "Minimum validation MARE among four pairs at M=128; tie uses lower complete latency; freeze before test. All formal budgets retained."
+        },
+        "code_commit": "a762de8f506efc4e3d70af94cd2e021ae33e160f",
+        "shared_reference_sha256": "54636561a3ce25bd3e19253c6b0d8538147b0ae398331ac4a2d86c6d987368cd",
+        "model_seed": 20260915,
+        "deann_extension_sha256": "0441e55b527776f7260bb0108462b3f32f2a549fd66e5d12dc07c09f75ac5c13"
+      },
+      "legacy_c5_model_sha256": "7193b3610dcf9bb7cf826a85a7e36730826baf22381f217e6f84000f9eabd81c",
+      "legacy_source_model_note": "For current_approx comparator only; final estimator uses projection64 cache"
+    },
+    "cifar10_gist512": {
+      "data_sha256": "0d55fa328e8fe5a262498a5967f01f91d0ab5e053ddbbe49e473609a22cf5aff",
+      "split_sha256": "661adb1f6c85c01e57a910704dedf205f2578e1af25d6fea13b88dcd99f55bcf",
+      "preprocessing_sha256": "603e10abd6b71c3f915534962ac462ed22278224fd5b698a156653cb42e31229",
+      "model_sha256": "20ad96937e9e723896265b4ca38bf990ecf098e6ac125a742121a66329143423",
+      "selected_epoch": 24,
+      "training_rule": "prospective common aggregate validation angular early stopping",
+      "n": 1800,
+      "d": 512,
+      "bandwidth": 2.0016209018619233,
+      "outer_radius": 9.33428519694623,
+      "delta": 1.5205900271733601,
+      "deann": {
+        "nprobe": 4,
+        "near_fraction": 0.25,
+        "nlist": 32,
+        "selected_before_test": true,
+        "source": {
+          "official_commit": "6dfb28370d6ed50a0aef53ece111fa449503554e",
+          "variant": "AnnEstimatorPermuted",
+          "ann_backend": "official FaissIVF wrapper",
+          "nlist_rule": "min(32, floor(n/40))",
+          "nprobe_validation_candidates": [
+            1,
+            4
+          ],
+          "near_fraction_validation_candidates": [
+            0.25,
+            0.5
+          ],
+          "validation_budget": 128,
+          "validation_queries": 20,
+          "selection_rule": "Minimum validation MARE among four pairs at M=128; tie uses lower complete latency; freeze before test. All formal budgets retained."
+        },
+        "code_commit": "a762de8f506efc4e3d70af94cd2e021ae33e160f",
+        "shared_reference_sha256": "0d55fa328e8fe5a262498a5967f01f91d0ab5e053ddbbe49e473609a22cf5aff",
+        "model_seed": 20260915,
+        "deann_extension_sha256": "0441e55b527776f7260bb0108462b3f32f2a549fd66e5d12dc07c09f75ac5c13"
+      },
+      "legacy_c5_model_sha256": "9e64f9f25349ed2dd70e11e4abe0bbcf020b31d14d08196857fb3be24f35691d",
+      "legacy_source_model_note": "For current_approx comparator only; final estimator uses projection64 cache"
+    },
+    "amazon": {
+      "data_sha256": "fd757a3517a850e5af8136c343fde492dd80f02af1e3c8e995b6da1154324aa5",
+      "split_sha256": "532e128baa125a7b627fce1f8948ce5f7500acadc90aeb57dcb22ef8adb3148a",
+      "preprocessing_sha256": "3e12b7e515ce0b95541d6407dcf61580b1d3fda2f99cc21ea5108e766b89f15b",
+      "model_sha256": "e5c03b7dc831fe398c820d83124d8d4c0b6cde3cbbe7a51c2f01926507077589",
+      "selected_epoch": 24,
+      "training_rule": "prospective common aggregate validation angular early stopping",
+      "n": 720,
+      "d": 10000,
+      "bandwidth": 8.654500481666629,
+      "outer_radius": 38.19126391589072,
+      "delta": 3.168128728866577,
+      "deann": {
+        "nprobe": 4,
+        "near_fraction": 0.5,
+        "nlist": 18,
+        "selected_before_test": true,
+        "source": {
+          "official_commit": "6dfb28370d6ed50a0aef53ece111fa449503554e",
+          "variant": "AnnEstimatorPermuted",
+          "ann_backend": "official FaissIVF wrapper",
+          "nlist_rule": "min(32, floor(n/40))",
+          "nprobe_validation_candidates": [
+            1,
+            4
+          ],
+          "near_fraction_validation_candidates": [
+            0.25,
+            0.5
+          ],
+          "validation_budget": 128,
+          "validation_queries": 20,
+          "selection_rule": "Minimum validation MARE among four pairs at M=128; tie uses lower complete latency; freeze before test. All formal budgets retained."
+        },
+        "code_commit": "a762de8f506efc4e3d70af94cd2e021ae33e160f",
+        "shared_reference_sha256": "fd757a3517a850e5af8136c343fde492dd80f02af1e3c8e995b6da1154324aa5",
+        "model_seed": 20260915,
+        "deann_extension_sha256": "0441e55b527776f7260bb0108462b3f32f2a549fd66e5d12dc07c09f75ac5c13"
+      },
+      "legacy_c5_model_sha256": "90ab7d213a65cd95a20777e0290767a56088991a77d6b5123eef98d8948d3e71",
+      "legacy_source_model_note": "For current_approx comparator only; final estimator uses projection64 cache"
+    }
+  }
+}

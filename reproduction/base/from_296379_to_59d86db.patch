@@ -1,0 +1,1859 @@
+diff --git a/mech_annulus_project_clean/revision/build_posting_index.py b/mech_annulus_project_clean/revision/build_posting_index.py
+new file mode 100644
+index 0000000..128d70c
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/build_posting_index.py
+@@ -0,0 +1,8 @@
++"""Build the CPU posting extension using the active reproducibility environment."""
++from pathlib import Path
++import sysconfig,subprocess,pybind11,json,time
++p=Path(__file__).resolve().parent
++cmd=['c++','-O3','-shared','-std=c++14','-fPIC','-I'+pybind11.get_include(),'-I'+sysconfig.get_paths()['include'],str(p/'posting_index.cpp'),'-o',str(p/('_posting_index'+sysconfig.get_config_var('EXT_SUFFIX')))]
++r=subprocess.run(cmd,capture_output=True,text=True)
++(p/'posting_build.json').write_text(json.dumps({'command':cmd,'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr,'timestamp':time.time()},indent=2))
++if r.returncode:raise RuntimeError(r.stderr)
+diff --git a/mech_annulus_project_clean/revision/final_index.py b/mech_annulus_project_clean/revision/final_index.py
+new file mode 100644
+index 0000000..5da537a
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/final_index.py
+@@ -0,0 +1,50 @@
++"""TYPE-1 posting index. Model, thresholds, candidate rule and estimator unchanged."""
++import math,time
++import numpy as np
++import torch
++import core as c
++from _posting_index import PostingIndex
++
++class IndexedMECH(c.source.MECHHashIndex):
++    def __init__(self,model,x,tables,bits,hamming_probe,delta):
++        start=time.perf_counter();self.name='MECH-postings';self.model=model.eval();self.x=x
++        self.tables_count=tables;self.bits=bits;self.hamming_probe=hamming_probe
++        self.thresholds=[];self.point_codes=[]
++        with torch.no_grad():hs=self.model.encode_continuous(torch.from_numpy(x))
++        for l in range(tables):
++            h=hs[l][:,:bits].numpy();t=np.median(h,axis=0);self.thresholds.append(t)
++            self.point_codes.append(c.source.pack_bits(h>=t))
++        norms=np.linalg.norm(np.asarray(x,dtype=np.float32),axis=1);self.zero_norm_ids=set(np.flatnonzero(norms==0).tolist())
++        self.layer_ids=np.floor(norms/delta).astype(int)
++        self.postings=PostingIndex([x.tolist() for x in self.point_codes],self.layer_ids.tolist(),sorted(self.zero_norm_ids),bits)
++        self.build_time_s=time.perf_counter()-start
++
++class IndexedEvaluator(c.Evaluator):
++    def __init__(self,*args,threshold_mapping=None,**kwargs):
++        super().__init__(*args,**kwargs);self.threshold_mapping=threshold_mapping
++    def thresholds_for_query(self,q):
++        a=float(np.linalg.norm(np.asarray(q,dtype=np.float32)))
++        angles=[c.source.max_angle_from_radius(a,float(x)) for x in np.linspace(0,self.radius,self.layers+1)[1:]]
++        if self.threshold_mapping is None:
++            return [max(self.index.hamming_probe,c.source.hamming_radius_from_angle(t,self.index.bits)) for t in angles]
++        knots=np.asarray(self.threshold_mapping['angles']);values=np.asarray(self.threshold_mapping['thresholds'])
++        # Piecewise-constant upper endpoint bins; monotonic fitted thresholds.
++        ids=np.minimum(np.searchsorted(knots,angles,side='left'),len(knots)-1)
++        return values[ids].astype(int).tolist()
++    def partition(self,q,codes,radius):
++        a=float(np.linalg.norm(np.asarray(q,dtype=np.float32)))
++        radii=np.linspace(0.,radius,self.layers+1)[1:]
++        z=self.index.postings.query(codes,a,radii.tolist(),self.delta,self.min_collisions,self.thresholds_for_query(q))
++        self.index.query_stats=z['stats']
++        return set(z['union']),{'outer_prefilter_size':z['outer_norm_pool_size']},z['rings']
++    def evaluate(self,method,q,budget,rng):
++        z=super().evaluate(method,q,budget,rng)
++        z['query_encode_ns']=z['encoding_ns'];z['sampling_ns']=z['allocation_ns']
++        for k in ['norm_lookup_ns','hash_lookup_ns','candidate_collect_ns','candidate_intersection_ns','dedup_ns','annulus_build_ns']:
++            z.setdefault(k,0)
++        for k in ['hash_bucket_visits','retrieved_posting_ids','norm_posting_ids','code_trie_node_visits']:z.setdefault(k,0)
++        if method=='exact_annular':z['annulus_build_ns']=z['candidate_ns']
++        accounted=sum(z[k] for k in ['encoding_ns','radius_ns','norm_lookup_ns','hash_lookup_ns','candidate_collect_ns','candidate_intersection_ns','dedup_ns','annulus_build_ns','sampling_ns','kernel_ns'])
++        z['unassigned_ns']=z['time_ns']-accounted
++        if z['unassigned_ns']<0:raise RuntimeError('Overlapping timing stages')
++        return z
+diff --git a/mech_annulus_project_clean/revision/posting_index.cpp b/mech_annulus_project_clean/revision/posting_index.cpp
+new file mode 100644
+index 0000000..78a3eea
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/posting_index.cpp
+@@ -0,0 +1,90 @@
++// TYPE-1: exact Hamming-ball lookup over occupied-code tries and norm postings.
++// Query memory is proportional to retrieved postings, never to reference n.
++#include <pybind11/pybind11.h>
++#include <pybind11/stl.h>
++#include <algorithm>
++#include <chrono>
++#include <cmath>
++#include <cstdint>
++#include <map>
++#include <stdexcept>
++#include <vector>
++namespace py=pybind11;
++using Clock=std::chrono::steady_clock;
++using i64=long long;
++static i64 elapsed(Clock::time_point t){return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-t).count();}
++struct Node {int child[2]={-1,-1};std::vector<int> buckets;};
++struct Bucket {uint64_t code;std::map<int,std::vector<int>> layers;};
++struct Table {std::vector<Node> trie;std::vector<Bucket> buckets;};
++class PostingIndex {
++ int bits_;std::vector<int> layers_;std::vector<int> zero_;std::vector<Table> tables_;std::map<int,int> norm_sizes_;
++ void search(const Table& t,int node,int bit,uint64_t q,int allowance,std::vector<int>& out,i64& visits)const{
++  if(node<0||allowance<0)return;++visits;
++  if(bit<0||allowance>=bit+1){out.insert(out.end(),t.trie[node].buckets.begin(),t.trie[node].buckets.end());return;}
++  int v=(q>>bit)&1;search(t,t.trie[node].child[v],bit-1,q,allowance,out,visits);search(t,t.trie[node].child[1-v],bit-1,q,allowance-1,out,visits);
++ }
++public:
++ PostingIndex(const std::vector<std::vector<uint64_t>>& codes,const std::vector<int>& layers,const std::vector<int>& zeros,int bits):bits_(bits),layers_(layers),zero_(zeros){
++  if(bits<1||bits>32)throw std::invalid_argument("unsupported bit count");
++  for(int l:layers_)norm_sizes_[l]++;
++  for(const auto& v:codes){
++   if(v.size()!=layers_.size())throw std::invalid_argument("reference length mismatch");
++   Table t;std::map<uint64_t,int> occupied;
++   for(size_t i=0;i<v.size();++i){auto it=occupied.find(v[i]);int k;
++    if(it==occupied.end()){k=t.buckets.size();occupied[v[i]]=k;t.buckets.push_back(Bucket{v[i],{}});}else k=it->second;
++    t.buckets[k].layers[layers_[i]].push_back(i);
++   }
++   t.trie.emplace_back();
++   for(size_t k=0;k<t.buckets.size();++k){int node=0;t.trie[node].buckets.push_back(k);
++    for(int bit=bits_-1;bit>=0;--bit){int v=(t.buckets[k].code>>bit)&1;
++     if(t.trie[node].child[v]<0){int next=t.trie.size();t.trie[node].child[v]=next;t.trie.emplace_back();}
++     node=t.trie[node].child[v];t.trie[node].buckets.push_back(k);
++    }
++   }tables_.push_back(std::move(t));
++  }
++ }
++ py::dict query(const std::vector<uint64_t>& qcodes,double a,const std::vector<double>& radii,double delta,int hits,const std::vector<int>& thresholds)const{
++  auto total_start=Clock::now();
++  if(qcodes.size()!=tables_.size()||radii.size()!=thresholds.size()||radii.empty()||delta<=0)throw std::invalid_argument("query shape");
++  if(!std::is_sorted(radii.begin(),radii.end())||!std::is_sorted(thresholds.begin(),thresholds.end()))throw std::invalid_argument("non-nested rule");
++  for(int t:thresholds)if(t<0||t>bits_)throw std::invalid_argument("threshold range");
++  hits=std::min(std::max(hits,1),int(tables_.size()));
++  i64 norm_ns=0,hash_ns=0,collect_ns=0,intersection_ns=0,dedup_ns=0,annulus_ns=0,visits=0,bucket_visits=0,posting_ids=0,norm_postings=0;
++  auto ts=Clock::now();
++  int outer_low=int(std::floor(std::max(0.,a-radii.back())/delta));int outer_high=int(std::ceil((a+radii.back())/delta));
++  int outer_size=0;for(auto it=norm_sizes_.lower_bound(outer_low);it!=norm_sizes_.end()&&it->first<=outer_high;++it){outer_size+=it->second;norm_postings+=it->second;}
++  norm_ns+=elapsed(ts);
++  std::map<int,std::vector<int>> cache;
++  for(int threshold:thresholds){
++   if(cache.count(threshold))continue;
++   std::vector<int> retrieved;
++   for(size_t l=0;l<tables_.size();++l){const auto& table=tables_[l];std::vector<int> buckets;
++    ts=Clock::now();search(table,0,bits_-1,qcodes[l],threshold,buckets,visits);hash_ns+=elapsed(ts);bucket_visits+=buckets.size();
++    for(int k:buckets){const auto& norms=table.buckets[k].layers;
++     ts=Clock::now();auto first=norms.lower_bound(outer_low);auto last=norms.upper_bound(outer_high);norm_ns+=elapsed(ts);
++     ts=Clock::now();for(auto it=first;it!=last;++it){posting_ids+=it->second.size();retrieved.insert(retrieved.end(),it->second.begin(),it->second.end());}collect_ns+=elapsed(ts);
++    }
++   }
++   // One point occurs at most once per table: multiplicity is the table-hit count.
++   ts=Clock::now();std::sort(retrieved.begin(),retrieved.end());std::vector<int> accepted;
++   for(size_t i=0;i<retrieved.size();){size_t j=i+1;while(j<retrieved.size()&&retrieved[j]==retrieved[i])++j;if(int(j-i)>=hits)accepted.push_back(retrieved[i]);i=j;}
++   cache.emplace(threshold,std::move(accepted));dedup_ns+=elapsed(ts);
++  }
++  std::vector<std::vector<int>> rings,balls;std::vector<int> previous;
++  for(size_t j=0;j<radii.size();++j){
++   ts=Clock::now();int low=int(std::floor(std::max(0.,a-radii[j])/delta));int high=int(std::ceil((a+radii[j])/delta));norm_ns+=elapsed(ts);
++   ts=Clock::now();std::vector<int> current;
++   for(int id:cache.at(thresholds[j]))if(layers_[id]>=low&&layers_[id]<=high&&!std::binary_search(zero_.begin(),zero_.end(),id))current.push_back(id);
++   if(a<=radii[j]){current.insert(current.end(),zero_.begin(),zero_.end());std::sort(current.begin(),current.end());}
++   intersection_ns+=elapsed(ts);
++   ts=Clock::now();std::vector<int> ring;std::set_difference(current.begin(),current.end(),previous.begin(),previous.end(),std::back_inserter(ring));
++   if(!std::includes(current.begin(),current.end(),previous.begin(),previous.end()))throw std::runtime_error("nesting failure");
++   rings.push_back(std::move(ring));previous=std::move(current);annulus_ns+=elapsed(ts);
++  }
++  py::dict stats;stats["norm_lookup_ns"]=norm_ns;stats["hash_lookup_ns"]=hash_ns;stats["candidate_collect_ns"]=collect_ns;stats["candidate_intersection_ns"]=intersection_ns;
++  stats["dedup_ns"]=dedup_ns;stats["annulus_build_ns"]=annulus_ns;stats["hash_bucket_visits"]=bucket_visits;stats["retrieved_posting_ids"]=posting_ids;stats["norm_posting_ids"]=norm_postings;stats["code_trie_node_visits"]=visits;
++  stats["hash_id_checks"]=0;stats["code_distance_checks"]=0;stats["posting_core_ns"]=elapsed(total_start);
++  py::dict out;out["union"]=previous;out["rings"]=rings;out["stats"]=stats;out["outer_norm_pool_size"]=outer_size;return out;
++ }
++};
++PYBIND11_MODULE(_posting_index,m){py::class_<PostingIndex>(m,"PostingIndex").def(py::init<const std::vector<std::vector<uint64_t>>&,const std::vector<int>&,const std::vector<int>&,int>()).def("query",&PostingIndex::query);}
+diff --git a/mech_annulus_project_clean/revision/sprint_b1_screen.py b/mech_annulus_project_clean/revision/sprint_b1_screen.py
+new file mode 100644
+index 0000000..5f2209b
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_b1_screen.py
+@@ -0,0 +1,10 @@
++import json
++from sprint_validate import *
++configs=json.loads((OUT/'screen_configs.json').read_text())
++configs['matched_Hquarter']['control']='single'
++base=dict(score='projection64',J=8,H_fraction=.25,grouping='quantile',full_target=True,allocation='proportional')
++for key,cfg in [('b1a_projection64',base),('b1a_projection64_neyman',dict(base,allocation='neyman')),('matched_projection64',dict(base,control='single'))]:
++    configs[key]=cfg;run_config(key,cfg,control=cfg.get('control'))
++s=summarize(configs);s.to_csv(OUT/'screen_summary.csv',index=False);save_json(OUT/'screen_configs.json',configs)
++print(s.pivot(index='config',columns='dataset',values='mean_relative_error').round(4).to_string(),flush=True)
++print(s.groupby('config').recovery.median().sort_values(ascending=False).to_string(),flush=True)
+diff --git a/mech_annulus_project_clean/revision/sprint_common.py b/mech_annulus_project_clean/revision/sprint_common.py
+new file mode 100644
+index 0000000..51b5403
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_common.py
+@@ -0,0 +1,42 @@
++"""Sprint inputs: frozen old splits, train-fitted preprocessing, guarded audit access."""
++from pathlib import Path
++import json,time,hashlib
++import numpy as np
++import torch
++import core as c
++import run as r
++from final_index import IndexedMECH,IndexedEvaluator
++ROOT=r.JOBROOT
++DATASETS=['isolet','cifar10','cifar10_gist512','amazon']
++BUDGETS=[32,64,128,256,512]
++SEEDS=[0,1,2,3,4]
++
++def load_data(name,phase='validation'):
++    if phase not in ('validation','test','audit'):raise ValueError(phase)
++    if phase in ('test','audit') and not (ROOT/'freeze_manifest.json').exists():raise RuntimeError('Formal queries require a frozen method')
++    torch.set_num_threads(8)
++    meta=json.loads((r.ASSETS/name/'metadata.json').read_text())
++    assert r.sha(r.DATA/r.FILES[name])==meta['data_sha256']
++    split=json.loads((r.ASSETS/name/'split_ids.json').read_text())
++    raw=r.raw_dataset(name)
++    active={k:np.asarray(split[k],dtype=np.int64) for k in ('train','reference','validation')}
++    if phase=='test':active['test']=np.asarray(split['test'],dtype=np.int64)
++    if phase=='audit':
++        lock=json.loads((ROOT/'audit/locked_ids.json').read_text())
++        active['audit']=np.asarray(lock['datasets'][name]['audit_ids'],dtype=np.int64)
++        if len(active['audit'])==0:raise ValueError('No independent audit rows for '+name)
++    arrays,scaler,anchor=c.fit_transform_splits(raw,active)
++    model=c.source.MultiEncoderContrastiveHash(raw.shape[1],12,5)
++    model.load_state_dict(torch.load(r.ASSETS/name/'model.pt',map_location='cpu'));model.eval()
++    start=time.perf_counter();index=IndexedMECH(model,arrays['reference'],12,5,2,meta['delta'])
++    ev=IndexedEvaluator(arrays['reference'],meta['bandwidth'],meta['radius'],8,index,meta['delta'],2)
++    offline={'index_build_seconds':time.perf_counter()-start,'model_training_seconds':meta['train_seconds'],'reference_bytes':ev.points.nbytes,'original_model_sha256':r.sha(r.ASSETS/name/'model.pt'),'data_sha256':meta['data_sha256'],'split_sha256':meta['split_sha256'],'preprocessing_sha256':meta['preprocessing_sha256'],'threads':8}
++    return dict(name=name,arrays=arrays,split=active,meta=meta,model=model,index=index,old=ev,points=ev.points,scaler=scaler,anchor=anchor,offline=offline)
++
++def save_json(path,value):
++    def default(x):
++        if isinstance(x,np.ndarray):return x.tolist()
++        if isinstance(x,np.generic):return x.item()
++        raise TypeError(type(x).__name__)
++    Path(path).parent.mkdir(parents=True,exist_ok=True)
++    Path(path).write_text(json.dumps(value,indent=2,default=default))
+diff --git a/mech_annulus_project_clean/revision/sprint_control_refresh.py b/mech_annulus_project_clean/revision/sprint_control_refresh.py
+new file mode 100644
+index 0000000..1508548
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_control_refresh.py
+@@ -0,0 +1,5 @@
++from sprint_validate import *
++configs=json.loads((OUT/'screen_configs.json').read_text())
++run_config('matched_projection64',configs['matched_projection64'],(64,128,256),control='single')
++s=summarize({k:configs[k] for k in ['b1a_projection64','b1a_projection64_neyman','b0_hamming_J4','matched_projection64']},(64,128,256));s.to_csv(OUT/'finalist_summary.csv',index=False)
++print(s.to_string(index=False),flush=True)
+diff --git a/mech_annulus_project_clean/revision/sprint_estimator.py b/mech_annulus_project_clean/revision/sprint_estimator.py
+new file mode 100644
+index 0000000..3bc259e
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_estimator.py
+@@ -0,0 +1,241 @@
++"""Full-target stratified estimator; no access to distances or truth caches.
++
++All H, pilot and main evaluations count against one budget.  IDs supplied in
++H and cells must be a disjoint partition of range(n).  Set validate=True for
++construction/unit checks; validation scans IDs and must not be hidden online.
++"""
++import math
++import time
++import numpy as np
++
++
++def allocate_counts(sizes, budget, weights=None):
++    """Minimum one per nonempty cell, bounded deterministic apportionment.
++
++    With weights=None the remaining budget follows residual capacities.  With
++    weights, remaining units follow those nonnegative weights, with saturation
++    followed by reapportionment.  Ties use increasing cell index.
++    """
++    sizes = np.asarray(sizes, dtype=np.int64)
++    if np.any(sizes < 0):
++        raise ValueError('Negative cell size')
++    budget = min(int(budget), int(sizes.sum()))
++    out = (sizes > 0).astype(np.int64)
++    if budget < int(out.sum()):
++        raise ValueError('Budget cannot cover every nonempty cell')
++    if weights is not None:
++        weights = np.asarray(weights, dtype=np.float64)
++        if weights.shape != sizes.shape or np.any(weights < 0) or not np.all(np.isfinite(weights)):
++            raise ValueError('Invalid allocation weights')
++    left = budget - int(out.sum())
++    while left:
++        capacity = sizes - out
++        active = capacity > 0
++        w = capacity.astype(float) if weights is None else np.where(active, weights, 0.)
++        if not float(w.sum()) > 0.:
++            w = capacity.astype(float)
++        quota = left * w / float(w.sum())
++        increment = np.minimum(capacity, np.floor(quota).astype(np.int64))
++        used = int(increment.sum())
++        if used:
++            out += increment
++            left -= used
++            continue
++        # Each active quota is below one. Largest remainder completes this pass.
++        order = np.argsort(-quota, kind='stable')
++        order = order[active[order]][:left]
++        if not len(order):
++            raise RuntimeError('Allocation made no progress')
++        out[order] += 1
++        left -= len(order)
++    return out
++
++
++def _draw_positions(size, count, rng):
++    if count == 0:
++        return np.empty(0, dtype=np.int64)
++    if count == size:
++        return np.arange(size, dtype=np.int64)
++    return np.asarray(rng.choice(size, size=int(count), replace=False), dtype=np.int64)
++
++
++def _expand_complement_positions(positions, excluded):
++    """Map uniform positions in a compressed complement without an N-size mask."""
++    out = np.asarray(positions, dtype=np.int64).copy()
++    for position in np.sort(excluded):
++        out += out >= position
++    return out
++
++
++def _logsum(values):
++    if not len(values):
++        return -math.inf
++    return float(np.logaddexp.reduce(values))
++
++
++def _validate_partition(n, H, cells):
++    ids = np.concatenate([H] + cells)
++    if len(ids) != n or np.any(ids < 0) or np.any(ids >= n) or len(np.unique(ids)) != n:
++        raise ValueError('H and cells must be a disjoint full-population partition')
++
++
++def estimate_strata(n, H, cells, budget, rng, kernel_fn, allocation='proportional',
++                    pilot_max=2, shrinkage=0.5, validate=False):
++    """Estimate n^-1 sum K from exact H plus sampled disjoint full-target cells.
++
++    kernel_fn(ids) returns log K for those identifiers in the ORIGINAL space.
++    It is called once in proportional mode, at most twice in Neyman mode.
++    """
++    clock = time.perf_counter_ns
++    begin = clock()
++    sampling_ns = allocation_ns = kernel_ns = aggregation_ns = 0
++    t = clock()
++    n, budget, pilot_max = int(n), int(budget), int(pilot_max)
++    if n <= 0 or budget < 0:
++        raise ValueError('n must be positive and budget nonnegative')
++    if allocation not in ('proportional', 'neyman'):
++        raise ValueError('allocation must be proportional or neyman')
++    if not 0. <= shrinkage <= 1. or pilot_max < 0 or pilot_max > 2:
++        raise ValueError('Require 0<=shrinkage<=1 and 0<=pilot_max<=2')
++    H = np.asarray(H, dtype=np.int64).reshape(-1)
++    cells = [np.asarray(cell, dtype=np.int64).reshape(-1) for cell in cells]
++    input_cell_sizes = np.asarray([len(cell) for cell in cells], dtype=np.int64)
++    cells = [cell for cell in cells if len(cell)]
++    if len(H) + sum(map(len, cells)) != n:
++        raise ValueError('H and cells have incorrect total cardinality')
++    if validate:
++        _validate_partition(n, H, cells)
++    limit = min(budget, n)
++    if len(H) > limit:
++        raise ValueError('Exact H exceeds total budget')
++    available = limit - len(H)
++    if cells and available == 0:
++        raise ValueError('No budget remains for the unobserved population')
++    fallback = ''
++    merged = False
++    if len(cells) > available:
++        # Membership-only decision before any kernel observation.
++        groups = np.array_split(np.arange(len(cells)), available)
++        cells = [np.concatenate([cells[int(j)] for j in group]) for group in groups]
++        fallback = 'adjacent_cells_merged_before_sampling'
++        merged = True
++    sizes = np.asarray([len(cell) for cell in cells], dtype=np.int64)
++    K = len(cells)
++    pilot_counts = np.zeros(K, dtype=np.int64)
++    main_counts = np.zeros(K, dtype=np.int64)
++    effective = allocation
++    if available == int(sizes.sum()):
++        effective = 'census'
++        main_counts = sizes.copy()
++    elif allocation == 'neyman':
++        proposed = np.minimum(sizes, pilot_max)
++        required = int(proposed.sum() + np.count_nonzero(sizes - proposed))
++        if pilot_max == 0 or required > available:
++            effective = 'proportional'
++            fallback = (fallback + ';' if fallback else '') + 'pilot_plus_main_minimum_exceeds_budget'
++            main_counts = allocate_counts(sizes, available)
++        else:
++            pilot_counts = proposed
++    else:
++        main_counts = allocate_counts(sizes, available)
++    allocation_ns += clock() - t
++
++    calls = []
++    def evaluate(ids):
++        nonlocal kernel_ns
++        if not len(ids):
++            return np.empty(0, dtype=np.float64)
++        start = clock()
++        logs = np.asarray(kernel_fn(ids), dtype=np.float64).reshape(-1)
++        kernel_ns += clock() - start
++        if len(logs) != len(ids) or np.any(np.isnan(logs)) or np.any(np.isposinf(logs)):
++            raise ValueError('kernel_fn returned invalid log values')
++        calls.append(len(ids))
++        return logs
++
++    pilot_positions = [np.empty(0, dtype=np.int64) for _ in cells]
++    pilot_ids = [np.empty(0, dtype=np.int64) for _ in cells]
++    main_ids = [np.empty(0, dtype=np.int64) for _ in cells]
++    pilot_logs = [np.empty(0, dtype=np.float64) for _ in cells]
++    sigma = np.zeros(K, dtype=np.float64)
++    if effective == 'neyman':
++        t = clock()
++        for j, cell in enumerate(cells):
++            pilot_positions[j] = _draw_positions(len(cell), pilot_counts[j], rng)
++            pilot_ids[j] = cell[pilot_positions[j]]
++        first_ids = np.concatenate([H] + pilot_ids)
++        sampling_ns += clock() - t
++        first_logs = evaluate(first_ids)
++        t = clock()
++        offset = len(H)
++        for j, count in enumerate(pilot_counts):
++            pilot_logs[j] = first_logs[offset:offset + count]
++            offset += count
++        pilots = first_logs[len(H):]
++        # Scale by the largest pilot log value: global scaling cancels in weights.
++        finite = pilots[np.isfinite(pilots)]
++        scale = float(finite.max()) if len(finite) else 0.
++        values = np.exp(pilots - scale)
++        pooled_variance = float(np.var(values, ddof=1)) if len(values) > 1 else 0.
++        for j, logs in enumerate(pilot_logs):
++            variance = float(np.var(np.exp(logs - scale), ddof=1)) if len(logs) > 1 else 0.
++            sigma[j] = math.sqrt((1. - shrinkage) * variance + shrinkage * pooled_variance)
++        remaining_sizes = sizes - pilot_counts
++        main_counts = allocate_counts(remaining_sizes, available - int(pilot_counts.sum()),
++                                      remaining_sizes * sigma)
++        allocation_ns += clock() - t
++        t = clock()
++        for j, cell in enumerate(cells):
++            compressed = _draw_positions(int(remaining_sizes[j]), int(main_counts[j]), rng)
++            positions = _expand_complement_positions(compressed, pilot_positions[j])
++            main_ids[j] = cell[positions]
++        second_ids = np.concatenate(main_ids) if K else np.empty(0, dtype=np.int64)
++        sampling_ns += clock() - t
++        second_logs = evaluate(second_ids)
++        t = clock()
++        log_terms = [_logsum(first_logs)]
++        offset = 0
++        for size, count in zip(remaining_sizes, main_counts):
++            if size:
++                if count < 1:
++                    raise RuntimeError('Unobserved nonempty stratum has no main sample')
++                log_terms.append(_logsum(second_logs[offset:offset + count]) + math.log(size / count))
++            offset += count
++        selected_ids = np.concatenate([first_ids, second_ids])
++        selected_logs = np.concatenate([first_logs, second_logs])
++    else:
++        t = clock()
++        for j, cell in enumerate(cells):
++            main_ids[j] = cell[_draw_positions(len(cell), main_counts[j], rng)]
++        selected_ids = np.concatenate([H] + main_ids)
++        sampling_ns += clock() - t
++        selected_logs = evaluate(selected_ids)
++        t = clock()
++        log_terms = [_logsum(selected_logs[:len(H)])]
++        offset = len(H)
++        for size, count in zip(sizes, main_counts):
++            log_terms.append(_logsum(selected_logs[offset:offset + count]) + math.log(size / count))
++            offset += count
++    log_estimate = _logsum(np.asarray(log_terms, dtype=np.float64)) - math.log(n)
++    aggregation_ns += clock() - t
++    if len(selected_ids) != limit:
++        raise RuntimeError('Estimator did not consume the prescribed capped budget')
++    result = {
++        'log_estimate': log_estimate, 'actual_samples': len(selected_ids),
++        'selected_ids': selected_ids, 'selected_log_kernel_values': selected_logs,
++        'H_ids': H, 'H_count': len(H), 'cell_sizes': sizes,
++        'input_cell_sizes': input_cell_sizes, 'pilot_counts': pilot_counts,
++        'main_counts': main_counts, 'pilot_ids': pilot_ids, 'main_ids': main_ids,
++        'allocation': allocation, 'effective_allocation': effective,
++        'fallback': fallback, 'merged_cells': merged, 'shrinkage': float(shrinkage),
++        'scaled_shrunk_sigma': sigma, 'kernel_calls': len(calls),
++        'kernel_call_sizes': calls, 'sampling_ns': sampling_ns,
++        'allocation_ns': allocation_ns, 'kernel_ns': kernel_ns,
++        'aggregation_ns': aggregation_ns,
++    }
++    result['total_ns'] = clock() - begin
++    result['unassigned_ns'] = result['total_ns'] - sum(result[k] for k in
++        ['sampling_ns', 'allocation_ns', 'kernel_ns', 'aggregation_ns'])
++    if result['unassigned_ns'] < 0:
++        raise RuntimeError('Overlapping estimator profiling phases')
++    return result
+diff --git a/mech_annulus_project_clean/revision/sprint_evaluator.py b/mech_annulus_project_clean/revision/sprint_evaluator.py
+new file mode 100644
+index 0000000..35119df
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_evaluator.py
+@@ -0,0 +1,92 @@
++"""Online norm-angle score strata and full-population hybrid estimator."""
++import math,time
++import numpy as np
++import core as c
++from sprint_common import ROOT
++from sprint_scores import ScoreModel,quantile_groups
++from sprint_estimator import estimate_strata
++from sprint_projection import ProjectionScore
++
++class SprintEvaluator:
++    def __init__(self,data):
++        self.data=data;self.old=data['old'];self.points=data['points'];self.n=len(self.points);self.h=self.old.h
++        self.score=ScoreModel(data['arrays']['reference'],data['arrays']['train'],data['model'],data['index'],ROOT/'models/score_calibration'/data['name'])
++        self.id_array=np.arange(self.n,dtype=np.int64)
++        self.projection=None
++    def ensure_projection(self):
++        if self.projection is None:
++            self.projection=ProjectionScore(self.data["arrays"]["reference"],self.data["arrays"]["train"],ROOT/"models/projection64"/self.data["name"])
++        return self.projection
++    def prepare(self,q,budget,cfg,control=None):
++        if cfg['score']=='projection64' and cfg['grouping']!='quantile':raise ValueError('Projection route requires quantile grouping')
++        if not cfg['full_target'] and (cfg['H_fraction'] != 0 or control is not None):
++            raise ValueError('Candidate-only diagnostic supports H=0 and no full-target control')
++        start=time.perf_counter_ns();stages={};counts={}
++        if cfg['score']=='projection64':
++            if self.projection is None:raise RuntimeError('Projection must be built offline before evaluating')
++            C=self.id_array;rings=[];z=self.projection.query(q)
++            stages['projection_ns']=z['projection_ns'];stages['low_dim_score_ns']=z['low_dim_score_ns']
++            counts.update(full_dimension_encoder_inner_products=0,full_dimension_projection_inner_products=64,
++              low_dim_score_evaluations=self.n,low_dim_score_dimension=64,hash_bucket_visits=0,retrieved_posting_ids=0,
++              code_trie_node_visits=0,norm_posting_ids=0,hamming_table_comparisons=0,full_dimension_query_norm_evaluations=0)
++        else:
++            t=time.perf_counter_ns();enc=self.score.encode_query(q);stages['query_encode_ns']=time.perf_counter_ns()-t
++            counts['full_dimension_encoder_inner_products']=enc['full_dimension_encoder_inner_products']
++            t=time.perf_counter_ns();union,_,rings=self.old.partition(q,enc['codes'],self.old.radius)
++            C=np.asarray(sorted(union),dtype=np.int64);stages['candidate_retrieval_ns']=time.perf_counter_ns()-t
++            rawstats=self.old.index.query_stats.copy()
++            for k in ['hash_bucket_visits','retrieved_posting_ids','code_trie_node_visits','norm_posting_ids']:counts[k]=int(rawstats.get(k,0))
++            t=time.perf_counter_ns();z=self.score.query(q,C,codes=enc['codes'],encoded=enc,kind=cfg['score']);stages['score_ns']=time.perf_counter_ns()-t
++            counts['low_dim_score_evaluations']=len(C);counts['low_dim_score_dimension']=60
++            counts['hamming_table_comparisons']=z['hamming_table_comparisons']
++            counts['full_dimension_query_norm_evaluations']=3
++        t=time.perf_counter_ns();order=np.lexsort((C,z['d2hat']));ranked=C[order]
++        k=min(int(budget*cfg['H_fraction']),len(C),max(0,budget-1));H=ranked[:k]
++        if control=='single':
++            cells=[]
++        elif cfg['grouping']=='old':
++            cells=[np.setdiff1d(np.asarray(cell,dtype=np.int64),H,assume_unique=False) for cell in rings]
++            cells=[cell for cell in cells if len(cell)]
++        else:
++            cells=[x for x in np.array_split(ranked[k:],min(cfg['J'],max(1,len(C)-k))) if len(x)]
++        stages['sorting_and_strata_ns']=time.perf_counter_ns()-t
++        t=time.perf_counter_ns()
++        if control=='single':
++            remainder=ranked[k:] if cfg['score']=='projection64' else np.setdiff1d(self.id_array,H,assume_unique=True);cells=[remainder] if len(remainder) else []
++            residual_size=self.n-len(C)
++        elif cfg['full_target']:
++            residual=np.empty(0,dtype=np.int64) if cfg['score']=='projection64' else np.setdiff1d(self.id_array,C,assume_unique=True)
++            residual_size=len(residual)
++            if residual_size:cells.append(residual)
++        else:residual_size=self.n-len(C)
++        stages['residual_build_ns']=time.perf_counter_ns()-t
++        counts['residual_id_scan_count']=self.n if ((control=='single' or cfg['full_target']) and cfg['score']!='projection64') else 0
++        return dict(H=H,cells=cells,C=C,residual_size=residual_size,stages=stages,counts=counts,prepare_ns=time.perf_counter_ns()-start)
++    def evaluate(self,q,budget,rng,cfg,control=None,keep_ids=False):
++        start=time.perf_counter_ns();p=self.prepare(q,budget,cfg,control)
++        measured_kernel_ids=[]
++        def kernel_fn(ids):
++            measured_kernel_ids.extend(np.asarray(ids,dtype=np.int64).tolist())
++            return -c.sqdist(self.points[ids],q)/(2*self.h*self.h)
++        allocation=cfg['allocation']
++        if control=='single' or control=='multi_proportional':allocation='proportional'
++        if control=='multi_neyman':allocation='neyman'
++        if cfg['full_target'] or control is not None:
++            est=estimate_strata(self.n,p['H'],p['cells'],budget,rng,kernel_fn,allocation=allocation,pilot_max=2,shrinkage=.5)
++        else:
++            t=time.perf_counter_ns();cells=c.prepare_rings(p['cells'],budget);alloc=c.allocate([len(x) for x in cells],budget);ids,w=c.sample_ids(cells,alloc,rng);sampling_ns=time.perf_counter_ns()-t
++            t=time.perf_counter_ns();logs=kernel_fn(ids) if len(ids) else np.zeros(0);kernel_ns=time.perf_counter_ns()-t
++            t=time.perf_counter_ns();value=c.log_weighted_estimate(logs,w,self.n);aggregation_ns=time.perf_counter_ns()-t
++            est=dict(log_estimate=value,actual_samples=len(ids),selected_ids=ids,H_count=0,cell_sizes=np.array([len(x) for x in cells]),pilot_counts=np.zeros(len(cells),dtype=int),main_counts=alloc,effective_allocation='proportional',fallback='',sampling_ns=sampling_ns,allocation_ns=0,kernel_ns=kernel_ns,aggregation_ns=aggregation_ns,kernel_calls=int(len(ids)>0),kernel_call_sizes=[len(ids)] if len(ids) else [])
++        phases=dict(p['stages'],**{k:int(est[k]) for k in ['sampling_ns','allocation_ns','kernel_ns','aggregation_ns']})
++        total=time.perf_counter_ns()-start
++        actual=len(measured_kernel_ids)
++        if actual!=est['actual_samples'] or actual>budget:raise RuntimeError('Budget accounting mismatch')
++        row=dict(log_estimate=est['log_estimate'],time_ns=total,actual_samples=actual,kernel_evaluations=actual,full_dimension_query_reference_distances=actual,
++          full_dimension_distance_or_dot_evaluations=actual+p['counts']['full_dimension_encoder_inner_products']+p['counts'].get('full_dimension_projection_inner_products',0),candidate_size=len(p['C']),residual_size=p['residual_size'],H_count=est['H_count'],
++          nonempty_layers=len(est['cell_sizes']),layer_sizes=est['cell_sizes'].tolist(),pilot_counts=est['pilot_counts'].tolist(),allocation=est['main_counts'].tolist(),effective_allocation=est['effective_allocation'],fallback=est['fallback'],kernel_calls=est['kernel_calls'],kernel_call_sizes=est['kernel_call_sizes'],
++          **phases,**p['counts'])
++        row['unassigned_ns']=total-sum(phases.values())
++        if row['unassigned_ns']<0:raise RuntimeError('Overlapping query phases')
++        if keep_ids:row.update(selected_ids=est['selected_ids'].tolist(),H_ids=p['H'].tolist(),candidate_ids=p['C'].tolist())
++        return row
+diff --git a/mech_annulus_project_clean/revision/sprint_finalists.py b/mech_annulus_project_clean/revision/sprint_finalists.py
+new file mode 100644
+index 0000000..6f15f39
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_finalists.py
+@@ -0,0 +1,9 @@
++import json
++from sprint_validate import *
++configs=json.loads((OUT/'screen_configs.json').read_text())
++keys=['b1a_projection64','b1a_projection64_neyman','b0_hamming_J4']
++save_json(OUT/'shortlist_before_extension.json',dict(methods=keys,controls=['matched_projection64'],budgets=[64,128,256],reason='Three highest median M128 validation Recovery candidate methods; matched control is not a candidate.'))
++for key in keys+['matched_projection64']:
++    run_config(key,configs[key],(64,128,256),control=configs[key].get('control'))
++s=summarize({k:configs[k] for k in keys+['matched_projection64']},(64,128,256));s.to_csv(OUT/'finalist_summary.csv',index=False)
++print(s[['config','dataset','budget','mean_relative_error','recovery','median_time_ms']].to_string(index=False),flush=True)
+diff --git a/mech_annulus_project_clean/revision/sprint_fixed_c_final.py b/mech_annulus_project_clean/revision/sprint_fixed_c_final.py
+new file mode 100644
+index 0000000..184f9ce
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_fixed_c_final.py
+@@ -0,0 +1,229 @@
++"""Offline Table 2A: frozen-score grouping, fixed C, proportional allocation.
++
++This diagnostic never removes H and never uses pilot/Neyman allocation.
++True query/reference distances appear only here as offline variance controls.
++Do not execute concurrently with formal query-latency measurement.
++"""
++import argparse
++import hashlib
++import itertools
++import json
++import math
++import time
++from pathlib import Path
++import numpy as np
++import pandas as pd
++import yaml
++import core as c
++from sprint_common import ROOT,DATASETS,load_data,save_json
++from sprint_scores import ScoreModel,quantile_groups
++from sprint_projection import ProjectionScore
++
++BUDGETS=(64,128,256)
++RANDOM_PARTITION_SEEDS=(0,1,2,3,4)
++BASE_SEED=20260916
++
++
++def sha_file(path):
++    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
++
++
++def _configuration(node):
++    if isinstance(node,dict):
++        if all(k in node for k in ('score','J','grouping')):
++            return node
++        for key in ('method_config','selected_config','config','final_method','method'):
++            if key in node:
++                result=_configuration(node[key])
++                if result is not None:return result
++    return None
++
++
++def load_frozen_config():
++    manifest_path=ROOT/'freeze_manifest.json'
++    config_path=ROOT/'final_config.yaml'
++    if not manifest_path.exists() or not config_path.exists():
++        raise RuntimeError('Both freeze_manifest.json and final_config.yaml required before formal diagnostics')
++    manifest=json.loads(manifest_path.read_text())
++    if manifest.get('frozen',True) is not True:
++        raise RuntimeError('Method is not frozen')
++    document=yaml.safe_load(config_path.read_text())
++    cfg=_configuration(document)
++    if cfg is None:raise RuntimeError('No frozen score/J/grouping configuration found')
++    frozen_cfg=_configuration(manifest)
++    if frozen_cfg is not None and any(frozen_cfg.get(k)!=cfg.get(k) for k in cfg):
++        raise RuntimeError('Manifest and final configuration disagree')
++    expected=manifest.get('final_config_sha256')
++    if expected is not None and expected!=sha_file(config_path):
++        raise RuntimeError('Final configuration changed after freeze')
++    if cfg['score'] not in ('projection64','hamming','real'):
++        raise ValueError('Unsupported frozen score: '+str(cfg['score']))
++    if cfg['grouping'] not in ('quantile','old'):
++        raise ValueError('Unsupported frozen grouping: '+str(cfg['grouping']))
++    if int(cfg['J'])<1:raise ValueError('Positive frozen J required')
++    return cfg,dict(final_config_sha256=sha_file(config_path),freeze_manifest_sha256=sha_file(manifest_path))
++
++
++def check_cells(cells,C):
++    ids=np.concatenate(cells) if cells else np.zeros(0,dtype=np.int64)
++    if not np.array_equal(np.sort(ids),np.sort(C)) or len(np.unique(ids))!=len(ids):
++        raise AssertionError('Grouping must be a disjoint partition of exactly C')
++
++
++def variance_for_cells(cells,scaled_kernel,budget,n):
++    sizes=np.asarray([len(x) for x in cells],dtype=np.int64)
++    counts=c.allocate(sizes,int(budget))
++    variance=c.predicted_variance([scaled_kernel[x] for x in cells],counts,n)
++    return float(variance),counts
++
++
++def grouping_family(C,approximate_cells,true_d2,raw_row_id,J):
++    check_cells(approximate_cells,C)
++    sizes=[len(x) for x in approximate_cells]
++    bounds=np.cumsum([0]+sizes)
++    true_ranked=C[np.lexsort((C,true_d2[C]))]
++    ordered=[true_ranked[bounds[i]:bounds[i+1]] for i in range(len(sizes))]
++    family=[('approx',-1,approximate_cells),('ordered',-1,ordered)]
++    for seed in RANDOM_PARTITION_SEEDS:
++        rng=np.random.default_rng(np.random.SeedSequence([BASE_SEED,int(raw_row_id),int(J),seed]))
++        shuffled=rng.permutation(C)
++        family.append(('random',seed,[shuffled[bounds[i]:bounds[i+1]] for i in range(len(sizes))]))
++    for _,_,cells in family:
++        check_cells(cells,C)
++        if [len(x) for x in cells]!=sizes:raise AssertionError('All groupings need identical population sizes')
++    return family
++
++
++def run_dataset(name,phase):
++    if phase not in ('test','audit'):raise ValueError('Only frozen formal phases supported')
++    cfg,provenance=load_frozen_config()
++    out=ROOT/'results/fixed_c_final'/phase
++    out.mkdir(parents=True,exist_ok=True)
++    marker=out/(name+'_DONE.json')
++    if marker.exists() or (out/(name+'_queries.csv')).exists():
++        raise RuntimeError('Formal diagnostic output exists; do not overwrite '+name+'/'+phase)
++    if phase=='audit':
++        locked=json.loads((ROOT/'audit/locked_ids.json').read_text())
++        if not locked['datasets'][name]['audit_ids']:
++            save_json(out/(name+'_SKIPPED.json'),dict(dataset=name,phase=phase,reason='No unused independent audit rows',**provenance))
++            return
++    start=time.time()
++    data=load_data(name,phase)
++    points=data['points'];n=len(points);h=data['old'].h
++    reference=data['arrays']['reference'];training=data['arrays']['train']
++    if cfg['score']=='projection64':
++        score=ProjectionScore(reference,training,ROOT/'models/projection64'/name)
++    else:
++        score=ScoreModel(reference,training,data['model'],data['index'],ROOT/'models/score_calibration'/name)
++    save_json(out/(name+'_protocol.json'),dict(dataset=name,phase=phase,final_method=cfg,
++        table2a=dict(H_count=0,pilot_count=0,allocation='minimum-one then residual-capacity proportional',
++                    budgets=list(BUDGETS),random_partition_seeds=list(RANDOM_PARTITION_SEEDS),
++                    seed_rule='SeedSequence([20260916, raw_row_id, J, random_partition_seed])',
++                    controls='same C, identical cell populations and fixed allocations',
++                    diagnostic_time_is_not_online_query_latency=True),
++        offline=score.offline_record,**provenance))
++    variance_rows=[];query_rows=[];stratum_rows=[]
++    for qi,q in enumerate(data['arrays'][phase]):
++        row_id=int(data['split'][phase][qi]);J=int(cfg['J'])
++        t=time.perf_counter_ns()
++        if cfg['score']=='projection64':
++            C=np.arange(n,dtype=np.int64);z=score.query(q);approx=quantile_groups(C,z['d2hat'],J)
++        else:
++            enc=score.encode_query(q)
++            union,_,old=data['old'].partition(q,enc['codes'],data['old'].radius)
++            C=np.asarray(sorted(union),dtype=np.int64)
++            z=score.query(q,C,codes=enc['codes'],encoded=enc,kind=cfg['score'])
++            approx=([np.asarray(x,dtype=np.int64) for x in old if len(x)] if cfg['grouping']=='old'
++                    else quantile_groups(C,z['d2hat'],J))
++        offline_score_ns=time.perf_counter_ns()-t
++        t=time.perf_counter_ns();d2=c.sqdist(points,q);logk=-d2/(2*h*h)
++        logscale=float(logk.max());values=np.exp(logk-logscale)
++        scale=float(np.exp(logscale));scale2=float(np.exp(2*logscale))
++        true_log_mean=c.log_weighted_estimate(logk,np.zeros(n),n)
++        offline_truth_ns=time.perf_counter_ns()-t
++        base=dict(dataset=name,phase=phase,query_id=qi,raw_row_id=row_id,score=cfg['score'],J=J,
++            candidate_size=len(C),candidate_fraction=len(C)/n,H_count=0,pilot_count=0,
++            candidate_kernel_mass_recall=float(values[C].sum()/values.sum()),
++            kernel_scale_log=logscale,log_truth=true_log_mean,truth=float(np.exp(true_log_mean)))
++        query_rows.append(dict(base,candidate_ids=json.dumps(C.tolist()),
++            offline_score_ns=offline_score_ns,offline_truth_ns=offline_truth_ns,
++            offline_true_distance_evaluations=n,offline_true_kernel_evaluations=n))
++        if len(C)==0:continue
++        family=grouping_family(C,approx,d2,row_id,J)
++        for grouping,seed,cells in family:
++            for si,ids in enumerate(cells):
++                v=values[ids];vvar=float(v.var(ddof=1)) if len(ids)>1 else 0.
++                stratum_rows.append(dict(base,grouping=grouping,partition_seed=seed,stratum=si,
++                    population=len(ids),member_ids=json.dumps(ids.tolist()),
++                    scaled_kernel_mean=float(v.mean()),scaled_kernel_variance=vvar,
++                    scaled_kernel_min=float(v.min()),scaled_kernel_max=float(v.max()),
++                    kernel_mean=float(v.mean()*scale),kernel_variance=float(vvar*scale2),
++                    kernel_min=float(v.min()*scale),kernel_max=float(v.max()*scale),
++                    exact_distance_mean=float(np.sqrt(d2[ids]).mean())))
++            for M in BUDGETS:
++                variance,counts=variance_for_cells(cells,values,M,n)
++                uniform,uniform_counts=variance_for_cells([C],values,M,n)
++                expected=c.allocate([len(x) for x in approx],M)
++                if not np.array_equal(counts,expected):raise AssertionError('Groupings have different fixed allocation')
++                if counts.sum()!=uniform_counts.sum():raise AssertionError('Actual evaluation budget mismatch')
++                variance_rows.append(dict(base,grouping=grouping,partition_seed=seed,budget=M,
++                    actual_samples=int(counts.sum()),layer_sizes=json.dumps([len(x) for x in cells]),
++                    allocation=json.dumps(counts.tolist()),scaled_predicted_variance=variance,
++                    scaled_uniform_variance=uniform,predicted_variance=variance*scale2,
++                    uniform_variance=uniform*scale2,variance_ratio=variance/uniform if uniform>0 else np.nan))
++        if (qi+1)%50==0:print(json.dumps(dict(event='fixed_c_diagnostic',dataset=name,phase=phase,queries=qi+1)),flush=True)
++    pd.DataFrame(query_rows).to_csv(out/(name+'_queries.csv'),index=False)
++    pd.DataFrame(stratum_rows).to_csv(out/(name+'_strata.csv'),index=False)
++    frame=pd.DataFrame(variance_rows);frame.to_csv(out/(name+'_variance.csv'),index=False)
++    # Five random partitions are averaged within query, never counted as independent queries.
++    within=frame.groupby(['dataset','phase','query_id','grouping','budget'],as_index=False).variance_ratio.mean()
++    summary=within.groupby(['dataset','phase','grouping','budget'],as_index=False).agg(
++        variance_ratio_median=('variance_ratio','median'),variance_ratio_mean=('variance_ratio','mean'),
++        queries=('query_id','size'))
++    summary.to_csv(out/(name+'_summary.csv'),index=False)
++    save_json(marker,dict(dataset=name,phase=phase,queries=len(query_rows),variance_rows=len(frame),
++        stratum_rows=len(stratum_rows),elapsed_seconds=time.time()-start,
++        source_sha256=sha_file(__file__),**provenance))
++    print(summary.to_json(orient='records'),flush=True)
++
++
++def self_test():
++    # Exhaustive without-replacement draws from a fixed candidate subset.
++    n=8;C=np.array([0,2,3,5,7],dtype=np.int64)
++    values=np.array([.2,.9,.8,.1,.4,.7,.3,.05])
++    approximate=np.array([.8,.4,.6,.3,.2])
++    cells=quantile_groups(C,approximate,2)
++    family=grouping_family(C,cells,np.arange(n,dtype=float)**2,17,2)
++    checks=[]
++    for grouping,seed,groups in family:
++        variance,counts=variance_for_cells(groups,values,3,n)
++        options=[list(itertools.combinations(ids,int(m))) for ids,m in zip(groups,counts)]
++        estimates=[]
++        for selected in itertools.product(*options):
++            estimates.append(sum(len(ids)/m*values[list(chosen)].sum() for ids,m,chosen in zip(groups,counts,selected))/n)
++        expected=values[C].sum()/n
++        assert abs(np.mean(estimates)-expected)<1e-14
++        assert abs(np.var(estimates)-variance)<1e-14
++        checks.append(dict(grouping=grouping,partition_seed=seed,draw_combinations=len(estimates),
++            finite_population_variance_equivalence=True,conditional_mean_equivalence=True))
++    all_variance,all_counts=variance_for_cells(cells,values,len(C),n)
++    assert all_variance==0 and all_counts.sum()==len(C)
++    # A diagnostic all-population draw is exact irrespective of grouping.
++    result=dict(passed=True,enumerated_groupings=len(checks),checks=checks,full_candidate_budget_zero_variance=True,
++        no_dataset_queries_read=True,source_sha256=sha_file(__file__))
++    save_json(ROOT/'results/group_diagnostics/fixed_c_final_self_test.json',result)
++    print(json.dumps(result),flush=True)
++
++
++def main():
++    parser=argparse.ArgumentParser()
++    parser.add_argument('--phase',choices=['test','audit'])
++    parser.add_argument('--dataset',choices=DATASETS+['all'],default='all')
++    parser.add_argument('--self-test',action='store_true')
++    args=parser.parse_args()
++    if args.self_test:
++        self_test();return
++    if args.phase is None:parser.error('--phase is required unless --self-test')
++    for name in (DATASETS if args.dataset=='all' else [args.dataset]):run_dataset(name,args.phase)
++
++if __name__=='__main__':main()
+diff --git a/mech_annulus_project_clean/revision/sprint_formal.py b/mech_annulus_project_clean/revision/sprint_formal.py
+new file mode 100644
+index 0000000..7ce932e
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_formal.py
+@@ -0,0 +1,136 @@
++"""Frozen formal old-test/audit evaluation. No selection entry point."""
++import argparse,hashlib,json,math,time,subprocess
++from pathlib import Path
++import numpy as np,pandas as pd
++import core as c,run as r
++from sprint_common import ROOT,DATASETS,BUDGETS,SEEDS,load_data,save_json
++from sprint_evaluator import SprintEvaluator
++import deann_adapter as da
++
++
++def verify_freeze():
++    f=json.loads((ROOT/'final_config.yaml').read_text());m=json.loads((ROOT/'freeze_manifest.json').read_text())
++    assert r.sha(ROOT/'final_config.yaml')==m['final_config_sha256']
++    assert f['frozen_before_formal_evaluation'] and r.git_head()==f['source_commit']
++    for filename,expected in f['source_hashes'].items():assert r.sha(Path(__file__).parent/filename)==expected,filename
++    assert r.sha(ROOT/'audit/locked_ids.json')==f['audit_ids_sha256']
++    return f
++
++
++def normalize_counts(z,n,d,method):
++    z=dict(z)
++    if method in ('uniform_mc','exact_annular','exact','current_approx'):
++        z['full_dimension_query_reference_distances']=int(z['distance_evaluations'])
++        z['full_dimension_encoder_inner_products']=60 if method=='current_approx' else 0
++        z['full_dimension_projection_inner_products']=0
++        z['full_dimension_distance_or_dot_evaluations']=z['full_dimension_query_reference_distances']+z['full_dimension_encoder_inner_products']
++        z['low_dim_score_evaluations']=0;z['low_dim_score_dimension']=0
++    elif method=='deann':
++        centers=min(32,n//40);z['ivf_centroid_distance_evaluations']=centers
++        z['ivf_reference_distance_evaluations']=int(z['ann_distance_evaluations'])-centers
++        z['full_dimension_query_reference_distances']=int(z['distance_evaluations'])-centers
++        z['full_dimension_distance_or_dot_evaluations']=int(z['distance_evaluations'])
++        z['full_dimension_encoder_inner_products']=0;z['full_dimension_projection_inner_products']=0
++        z['low_dim_score_evaluations']=0;z['low_dim_score_dimension']=0
++        z['sampling_kernel_combined_ns']=z['kernel_ns']
++    z['feature_dimension']=d
++    return z
++
++
++def main(name,phase):
++    freeze=verify_freeze();cfg=freeze['method_config'];data=load_data(name,phase)
++    e=SprintEvaluator(data)
++    if cfg['score']=='projection64':e.ensure_projection()
++    control=c.Evaluator(data['arrays']['reference'],e.h,e.old.radius,8);control.points=e.points
++    assert np.shares_memory(control.points,e.points)
++    queries=data['arrays'][phase];rawids=data['split'][phase]
++    assert len(queries)==200
++    out=ROOT/'results/formal'/phase/name;out.mkdir(parents=True,exist_ok=False)
++    save_json(out/'environment_start.json',dict(time_unix=time.time(),source_commit=r.git_head(),processes=subprocess.check_output(['ps','-eo','pid,pcpu,comm,args'],text=True)))
++    raw=r.raw_dataset(name)
++    truth=[];logks=[];transforms=[];candidate_mass=[];candidate_counts=[];truth_times=[]
++    for qi,q in enumerate(queries):
++        t=time.perf_counter_ns();logs=-c.sqdist(e.points,q)/(2*e.h**2);logks.append(logs);truth.append(float(c.logsumexp(logs)-math.log(e.n)));truth_times.append(time.perf_counter_ns()-t)
++        codes=e.old.index.query_codes(q);C,_,_=e.old.partition(q,codes,e.old.radius);ids=np.array(sorted(C),dtype=np.int64)
++        v=np.exp(logs-logs.max());candidate_mass.append(float(v[ids].sum()/v.sum()));candidate_counts.append(len(ids))
++        times=[]
++        for rep in range(3):
++            t=time.perf_counter_ns();qq=(2*data['scaler'].transform(raw[rawids[qi]][None,:])+data['anchor']).astype(np.float32)[0];times.append(time.perf_counter_ns()-t);assert np.array_equal(qq,q)
++        transforms.append(float(np.median(times)))
++    del raw
++    save_json(out/'offline.json',dict(legacy_comparison_setup=data['offline'],final_projection=e.projection.offline_record if e.projection is not None else None))
++    pd.DataFrame([dict(dataset=name,phase=phase,query_id=i,raw_row_id=int(rawids[i]),truth=float(np.exp(truth[i])),log_truth=truth[i],transform_ns=transforms[i],truth_time_ns=truth_times[i],current_candidate_mass_recall=candidate_mass[i],current_candidate_size=candidate_counts[i]) for i in range(200)]).to_csv(out/'query_truth.csv',index=False)
++    methods=['exact','uniform_mc','exact_annular','current_approx','final','matched_single']
++    # Reuse the final rows as their identical allocation control; evaluate only the other allocation.
++    additional='matched_neyman' if cfg['allocation']=='proportional' else 'matched_proportional';methods.append(additional)
++    def evaluate(method,q,budget,seed,qi):
++        rng=np.random.default_rng(seed+qi*100003)
++        if method=='current_approx':z=e.old.evaluate('approx_annular_mech',q,budget,rng)
++        elif method in ('exact','uniform_mc','exact_annular'):z=control.evaluate(method,q,max(1,budget),rng)
++        else:
++            ctrl=None if method=='final' else {'matched_single':'single','matched_neyman':'multi_neyman','matched_proportional':'multi_proportional'}[method]
++            z=e.evaluate(q,budget,rng,cfg,control=ctrl,keep_ids=True)
++        return normalize_counts(z,e.n,e.points.shape[1],method)
++    for method in methods:evaluate(method,queries[0],32,987,0)
++    rows=[];timings=[];h_check={}
++    for qi,q in enumerate(queries):
++        rotate=qi%len(methods)
++        for method in methods[rotate:]+methods[:rotate]:
++            for budget in ([0] if method=='exact' else BUDGETS):
++                for seed in ([0] if method=='exact' else SEEDS):
++                    reps=[evaluate(method,q,budget,seed,qi) for rep in range(3)]
++                    z=reps[0].copy()
++                    for rr in reps[1:]:assert rr['log_estimate']==z['log_estimate']
++                    if 'selected_ids' in z:
++                        ids=z['selected_ids'];assert len(ids)==len(set(ids))==min(budget,e.n)
++                        key=(qi,budget);H=tuple(z['H_ids'])
++                        if key in h_check:assert h_check[key]==H
++                        else:h_check[key]=H
++                    for k in list(z):
++                        if k.endswith('_ns'):z[k]=float(np.median([rr[k] for rr in reps]))
++                    z.update(c.errors(z.pop('log_estimate'),truth[qi]));z['transform_ns']=transforms[qi]
++                    z['transform_inclusive_total_derived_ns']=z['time_ns']+transforms[qi]
++                    z['candidate_mass_recall']=candidate_mass[qi] if method=='current_approx' else 1.
++                    z['candidate_union_discrepancy']=z['candidate_mass_recall']-1
++                    z['support_size']=e.n if method!='current_approx' else candidate_counts[qi]
++                    z.pop('candidate_ids',None)
++                    if 'H_ids' in z:
++                        v=np.exp(logks[qi]-logks[qi].max());z['H_kernel_mass_recall']=float(v[z['H_ids']].sum()/v.sum())
++                    base=dict(dataset=name,phase=phase,method=method,query_id=qi,raw_row_id=int(rawids[qi]),budget=budget,seed=seed)
++                    rows.append(dict(base,**z))
++                    for rep,rr in enumerate(reps):
++                        timings.append(dict(base,repeat=rep,transform_ns=transforms[qi],**{k:v for k,v in rr.items() if k.endswith('_ns') or k in ('kernel_evaluations','actual_samples','full_dimension_distance_or_dot_evaluations','low_dim_score_evaluations','hash_bucket_visits','retrieved_posting_ids')}))
++        if (qi+1)%20==0:print(json.dumps(dict(event='formal_basic',dataset=name,phase=phase,queries=qi+1)),flush=True)
++    pd.DataFrame(rows).to_csv(out/'basic_queries.csv',index=False);pd.DataFrame(timings).to_csv(out/'basic_timings.csv',index=False)
++    alias='matched_proportional' if cfg['allocation']=='proportional' else 'matched_neyman'
++    save_json(out/'control_alias.json',dict(alias=alias,source_method='final',reason='Same frozen H, grouping and allocation; reuse identical observations rather than rerun.'))
++    del rows,timings
++    ann,offline=da.build(e.points);dcfg=freeze['datasets'][name]['deann'];fits=[];rows=[];timings=[]
++    original_query=ann.query
++    def record_neighbors(q,k):
++        distances,ids,counters=original_query(q,k);ann.recorded_neighbor_ids=ids[ids>=0].copy();return distances,ids,counters
++    ann.query=record_neighbors
++    for budget in BUDGETS:
++        for seed in SEEDS:
++            est,k,m,fit=da.make_estimator(e.points,e.h,ann,budget,dcfg['near_fraction'],dcfg['nprobe'],seed);fits.append(dict(budget=budget,seed=seed,permutation_fit_seconds=fit))
++            da.evaluate(est,ann,queries[0],k,m)
++            for qi,q in enumerate(queries):
++                reps=[];neighbors=None
++                for rep in range(3):
++                    zz=normalize_counts(da.evaluate(est,ann,q,k,m),e.n,e.points.shape[1],'deann');reps.append(zz)
++                    if rep==0:neighbors=ann.recorded_neighbor_ids.copy()
++                    timings.append(dict(dataset=name,phase=phase,method='deann',query_id=qi,raw_row_id=int(rawids[qi]),budget=budget,seed=seed,repeat=rep,transform_ns=transforms[qi],**{kk:vv for kk,vv in zz.items() if kk.endswith('_ns') or kk in ('kernel_evaluations','actual_samples','full_dimension_distance_or_dot_evaluations','ivf_centroid_distance_evaluations','ivf_reference_distance_evaluations','overlap_corrections')}))
++                z=reps[0].copy()
++                for kk in list(z):
++                    if kk.endswith('_ns'):z[kk]=float(np.median([rr[kk] for rr in reps]))
++                z.update(c.errors(z.pop('log_estimate'),truth[qi]));z['transform_ns']=transforms[qi];z['transform_inclusive_total_derived_ns']=z['time_ns']+transforms[qi]
++                z['candidate_mass_recall']=1.;z['candidate_union_discrepancy']=0.;z['support_size']=e.n
++                v=np.exp(logks[qi]-logks[qi].max());z['retrieved_neighbor_mass_recall']=float(v[neighbors].sum()/v.sum())
++                rows.append(dict(dataset=name,phase=phase,method='deann',query_id=qi,raw_row_id=int(rawids[qi]),budget=budget,seed=seed,**z))
++        print(json.dumps(dict(event='formal_deann',dataset=name,phase=phase,budget=budget)),flush=True)
++    pd.DataFrame(rows).to_csv(out/'deann_queries.csv',index=False);pd.DataFrame(timings).to_csv(out/'deann_timings.csv',index=False);pd.DataFrame(fits).to_csv(out/'deann_fits.csv',index=False)
++    save_json(out/'deann_offline.json',offline)
++    save_json(out/'DONE.json',dict(source_commit=r.git_head(),freeze_sha256=r.sha(ROOT/'final_config.yaml'),completed=time.time(),query_count=200,budgets=BUDGETS,seeds=SEEDS))
++
++if __name__=='__main__':
++    ap=argparse.ArgumentParser();ap.add_argument('--dataset',required=True,choices=DATASETS);ap.add_argument('--phase',required=True,choices=['test','audit']);a=ap.parse_args();main(a.dataset,a.phase)
+diff --git a/mech_annulus_project_clean/revision/sprint_freeze.py b/mech_annulus_project_clean/revision/sprint_freeze.py
+new file mode 100644
+index 0000000..c9de9a6
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_freeze.py
+@@ -0,0 +1,29 @@
++"""Write the immutable method and provenance before any formal query evaluation."""
++import json,time,subprocess
++from pathlib import Path
++import run as r
++from sprint_common import ROOT,DATASETS,save_json
++assert not (ROOT/'freeze_manifest.json').exists()
++choice=json.loads((ROOT/'results/validation/selection_decision.json').read_text())
++old=json.loads((ROOT/'prior_final/final_config.yaml').read_text())
++source=Path(__file__).parent
++hashes={p.name:r.sha(p) for p in sorted(source.iterdir()) if p.suffix in ('.py','.cpp','.so')}
++assets={str(p.relative_to(ROOT)):r.sha(p) for p in sorted((ROOT/'models').rglob('*')) if p.is_file()}
++f=dict(frozen_before_formal_evaluation=True,freeze_time_unix=time.time(),source_commit=r.git_head(),source_hashes=hashes,method_config=choice['method_config'],selected=choice['selected'],
++ validation_selection_sha256=r.sha(ROOT/'results/validation/selection_decision.json'),audit_ids_sha256=r.sha(ROOT/'audit/locked_ids.json'),model_and_calibration_hashes=assets,
++ projection=dict(dimension=64,seed=20260916,distribution='Gaussian N(0,1/64)',training_mean_centering=True,reference_scan='all reference projections',kernel_space='unchanged original transformed d-dimensional features'),
++ budgets=[32,64,128,256,512],sampling_seeds=list(range(5)),test_queries=200,audit_queries={'isolet':200,'cifar10':200,'cifar10_gist512':200,'amazon':0},timing_repeats=3,threads=8,
++ old_test_status='Previously exposed, used only for controlled new/old comparison; audit locked before sprint validation',
++ timing_boundary='Same transformed query vector for every method. All online projection/retrieval/sorting/strata/allocation/kernel steps included. Raw transform measured separately. No concurrent experimental computation.',
++ basic_rng_rule='seed+query_id*100003; reset for each of three timing repeats',deann_rng_rule='Official permuted estimator; one warmup, three advancing sampler calls per query; first value supplies error',
++ matched_control='Same H and total M. Projection single remainder reuses ranked[k:]. Final proportional rows reused as identical matched_proportional control; Neyman separately measured.',
++ datasets=old['datasets'])
++for name in DATASETS:
++    meta=json.loads((r.ASSETS/name/'metadata.json').read_text())
++    for key in ['data_sha256','split_sha256','preprocessing_sha256']:assert meta[key]==f['datasets'][name][key]
++    f['datasets'][name]['legacy_c5_model_sha256']=r.sha(r.ASSETS/name/'model.pt')
++    f['datasets'][name]['legacy_source_model_note']='For current_approx comparator only; final estimator uses projection64 cache'
++    f['datasets'][name].pop('model_relative_path',None)
++save_json(ROOT/'final_config.yaml',f)
++save_json(ROOT/'freeze_manifest.json',dict(frozen=True,created_unix=time.time(),source_commit=r.git_head(),final_config_sha256=r.sha(ROOT/'final_config.yaml'),method_config=choice['method_config']))
++print(json.dumps(dict(frozen=True,source_commit=r.git_head(),method_config=f['method_config'],time_unix=f['freeze_time_unix'])))
+diff --git a/mech_annulus_project_clean/revision/sprint_group_diagnostics.py b/mech_annulus_project_clean/revision/sprint_group_diagnostics.py
+new file mode 100644
+index 0000000..6e5031b
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_group_diagnostics.py
+@@ -0,0 +1,175 @@
++"""Validation-only grouping diagnosis; full query distances are offline controls."""
++import argparse
++import hashlib
++import json
++import time
++import warnings
++from pathlib import Path
++import numpy as np
++import pandas as pd
++import torch
++from scipy.stats import pearsonr, spearmanr
++import core as c
++import run as r
++from final_index import IndexedMECH, IndexedEvaluator
++from sprint_scores import ScoreModel, quantile_groups
++
++ROOT = r.JOBROOT
++KINDS = ('hamming', 'real')
++BUDGETS = (64, 128, 256)
++LAYERS = (4, 8)
++
++
++def corr(a, b, rank=False):
++    if len(a)<3 or np.ptp(a)==0 or np.ptp(b)==0:
++        return float('nan')
++    with warnings.catch_warnings():
++        warnings.simplefilter('ignore')
++        return float((spearmanr if rank else pearsonr)(a,b)[0])
++
++
++def load_validation(name):
++    torch.set_num_threads(8)
++    folder = ROOT/'assets'/name
++    meta = json.loads((folder/'metadata.json').read_text())
++    full_split = json.loads((folder/'split_ids.json').read_text())
++    split = {k:np.asarray(full_split[k],dtype=np.int64) for k in ('train','reference','validation')}
++    # Only these three parts are transformed, never test or locked audit rows.
++    arrays, _, _ = c.fit_transform_splits(r.raw_dataset(name),split)
++    if r.sha(folder/'model.pt') != meta['model_sha256']:
++        raise RuntimeError('Frozen model checksum mismatch')
++    model = c.source.MultiEncoderContrastiveHash(arrays['reference'].shape[1],12,5)
++    model.load_state_dict(torch.load(folder/'model.pt',map_location='cpu'))
++    model.eval()
++    index = IndexedMECH(model,arrays['reference'],12,5,2,meta['delta'])
++    evaluator = IndexedEvaluator(arrays['reference'],meta['bandwidth'],meta['radius'],8,index,meta['delta'],2)
++    score = ScoreModel(arrays['reference'],arrays['train'],model,index,ROOT/'models'/'score_calibration'/name)
++    return arrays,split,meta,evaluator,score
++
++
++def _variance(cells, values, budget, n):
++    counts = c.allocate([len(z) for z in cells],budget)
++    return c.predicted_variance([values[z] for z in cells],counts,n),counts
++
++
++def run_dataset(name, out):
++    out.mkdir(parents=True,exist_ok=True)
++    if (out/(name+'_DONE.json')).exists():
++        raise RuntimeError('Completed diagnosis already exists; do not overwrite')
++    start = time.time()
++    arrays,split,meta,e,score = load_validation(name)
++    (out/(name+'_offline.json')).write_text(json.dumps(score.offline_record,indent=2))
++    stats, variances, strata, radius_rows = [],[],[],[]
++    n=e.n
++    points=e.points
++    for qi,q in enumerate(arrays['validation']):
++        encoded=score.encode_query(q)
++        if encoded['codes']!=e.index.query_codes(q):
++            raise AssertionError('Reused code semantics differ from original index')
++        Cset,_,old=e.partition(q,encoded['codes'],e.radius)
++        C=np.asarray(sorted(Cset),dtype=np.int64)
++        old=[np.asarray(x,dtype=np.int64) for x in old if len(x)]
++        d2=c.sqdist(points,q)
++        logk=-d2/(2*e.h*e.h)
++        values=np.exp(logk-np.max(logk)) # shared scale cancels in variance ratios
++        qn=float(np.linalg.norm(np.asarray(q,dtype=np.float64)))
++        prod=score.reference_norms*qn
++        theta=np.arccos(np.clip(np.divide(points@np.asarray(q,dtype=np.float64),prod,
++                                  out=np.ones(n),where=prod>0),-1,1))
++        thresholds=e.thresholds_for_query(q)
++        rings=e.partition(q,encoded['codes'],e.radius)[2]
++        union=set()
++        for ri,(radius,ring,threshold) in enumerate(zip(np.linspace(0,e.radius,9)[1:],rings,thresholds)):
++            union.update(ring)
++            app=np.asarray(sorted(union),dtype=np.int64)
++            exact=np.flatnonzero(d2<=radius*radius)
++            common=np.intersect1d(app,exact,assume_unique=True)
++            radius_rows.append(dict(dataset=name,query_id=qi,raw_row_id=int(split['validation'][qi]),
++                radius_id=ri,radius=float(radius),radius_over_query_norm=radius/qn if qn else float('inf'),
++                angular_bound=c.source.max_angle_from_radius(float(np.linalg.norm(q)),float(radius)),
++                threshold=threshold,unique_thresholds=len(set(thresholds)),
++                exact_size=len(exact),approx_size=len(app),
++                precision=len(common)/len(app) if len(app) else np.nan,
++                recall=len(common)/len(exact) if len(exact) else np.nan,
++                kernel_mass_recall=float(values[common].sum()/values[exact].sum()) if len(exact) else np.nan))
++        base=dict(dataset=name,query_id=qi,raw_row_id=int(split['validation'][qi]),candidate_size=len(C),
++                  candidate_ratio=len(C)/n,candidate_kernel_mass_recall=float(values[C].sum()/values.sum()),
++                  old_largest_layer_fraction=max([len(z) for z in old],default=0)/max(1,len(C)),
++                  old_nonempty_layers=len(old),unique_radius_thresholds=len(set(thresholds)))
++        if not len(C):
++            stats.append(dict(base,kind='empty'))
++            continue
++        for kind in KINDS:
++            z=score.query(q,C,codes=encoded['codes'],kind=kind,encoded=encoded)
++            unique,counts=np.unique(z['raw_score'],return_counts=True)
++            stat=dict(base,kind=kind,unique_score_values=len(unique),largest_score_tie_fraction=float(counts.max()/len(C)),
++                unique_approximate_distances=len(np.unique(z['d2hat'])),
++                d2_spearman=corr(z['d2hat'],d2[C],True),
++                raw_score_angle_pearson=corr(z['raw_score'],theta[C]),
++                raw_score_angle_spearman=corr(z['raw_score'],theta[C],True),
++                calibrated_angle_mae=float(np.mean(np.abs(z['theta_hat']-theta[C]))),
++                query_encode_ns=encoded['query_encode_ns'],
++                **{k:v for k,v in z.items() if k.endswith('_ns') and k!='query_encode_ns'})
++            stats.append(stat)
++            for J in LAYERS:
++                groups=quantile_groups(C,z['d2hat'],J)
++                sizes=[len(x) for x in groups]
++                ordered=quantile_groups(C,d2[C],J)
++                family=[('approx',groups,-1),('ordered',ordered,-1)]
++                for rep in range(5):
++                    perm=np.random.default_rng(20260916+qi*1009+rep*100003+J).permutation(C)
++                    bounds=np.cumsum([0]+sizes)
++                    family.append(('random',[perm[bounds[i]:bounds[i+1]] for i in range(len(sizes))],rep))
++                if J==8:
++                    family.append(('old_annuli',old,-1))
++                for group_kind,cells,rep in family:
++                    for si,ids in enumerate(cells):
++                        v=values[ids]
++                        strata.append(dict(base,kind=kind,J=J,grouping=group_kind,random_repeat=rep,
++                            stratum=si,population=len(ids),kernel_scale_log=float(np.max(logk)),
++                            scaled_kernel_mean=float(v.mean()),scaled_kernel_variance=float(v.var(ddof=1)) if len(v)>1 else 0.,
++                            scaled_kernel_min=float(v.min()),scaled_kernel_max=float(v.max()),
++                            exact_distance_mean=float(np.sqrt(d2[ids]).mean()),
++                            exact_distance_std=float(np.sqrt(d2[ids]).std())))
++                    for M in BUDGETS:
++                        variance,allocation=_variance(cells,values,M,n)
++                        denominator,_=_variance([C],values,M,n)
++                        variances.append(dict(base,kind=kind,J=J,grouping=group_kind,random_repeat=rep,budget=M,
++                            variance_ratio=variance/denominator if denominator>0 else np.nan,
++                            scaled_predicted_variance=variance,scaled_uniform_variance=denominator,
++                            actual_kernel_evaluations=int(allocation.sum()),
++                            layer_sizes=json.dumps([len(x) for x in cells]),allocation=json.dumps(allocation.tolist())))
++        if (qi+1)%20==0:
++            print(json.dumps(dict(dataset=name,validation_queries=qi+1,elapsed_seconds=time.time()-start)),flush=True)
++    for suffix,rows in [('query_diagnostics',stats),('variance',variances),('strata',strata),('radii',radius_rows)]:
++        pd.DataFrame(rows).to_csv(out/(name+'_'+suffix+'.csv'),index=False)
++    vf=pd.DataFrame(variances)
++    # Average the five random partitions within query before cross-query summaries.
++    vq=vf.groupby(['dataset','kind','J','grouping','budget','query_id'],as_index=False).variance_ratio.mean()
++    summary=vq.groupby(['dataset','kind','J','grouping','budget'],as_index=False).agg(
++        variance_ratio_median=('variance_ratio','median'),variance_ratio_mean=('variance_ratio','mean'),
++        queries=('query_id','size'))
++    summary.to_csv(out/(name+'_summary.csv'),index=False)
++    sf=pd.DataFrame(stats).groupby(['dataset','kind'],as_index=False).agg(
++        unique_scores_median=('unique_score_values','median'),largest_tie_median=('largest_score_tie_fraction','median'),
++        d2_spearman_median=('d2_spearman','median'),angle_pearson_median=('raw_score_angle_pearson','median'),
++        angle_mae_mean=('calibrated_angle_mae','mean'),candidate_mass_recall_mean=('candidate_kernel_mass_recall','mean'))
++    sf.to_csv(out/(name+'_score_summary.csv'),index=False)
++    done=dict(dataset=name,queries=len(arrays['validation']),split='validation only',
++              transformed_splits=list(arrays),elapsed_seconds=time.time()-start,
++              source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in [Path(__file__),Path(__file__).with_name('sprint_scores.py')]})
++    (out/(name+'_DONE.json')).write_text(json.dumps(done,indent=2))
++    print(summary[summary.budget==128].to_json(orient='records'),flush=True)
++    print(sf.to_json(orient='records'),flush=True)
++
++
++def main():
++    parser=argparse.ArgumentParser()
++    parser.add_argument('--dataset',choices=list(r.FILES)+['all'],default='all')
++    args=parser.parse_args()
++    out=ROOT/'results'/'group_diagnostics'
++    for name in (list(r.FILES) if args.dataset=='all' else [args.dataset]):
++        run_dataset(name,out)
++
++if __name__=='__main__':
++    main()
+diff --git a/mech_annulus_project_clean/revision/sprint_projection.py b/mech_annulus_project_clean/revision/sprint_projection.py
+new file mode 100644
+index 0000000..84cdaf1
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_projection.py
+@@ -0,0 +1,123 @@
++"""One fixed 64-dimensional Gaussian auxiliary score for the sprint.
++
++This is an O(n*64) scan when candidate_ids is None. It is not a sublinear index.
++Only original-space kernels in the estimator define the KDE target.
++"""
++import hashlib
++import json
++import time
++from pathlib import Path
++import numpy as np
++
++SEED = 20260916
++PROJECTION_DIMENSION = 64
++
++
++def _sha_array(array):
++    a = np.ascontiguousarray(array)
++    h = hashlib.sha256()
++    h.update(str(a.dtype).encode())
++    h.update(str(a.shape).encode())
++    h.update(memoryview(a).cast('B'))
++    return h.hexdigest()
++
++
++class ProjectionScore:
++    """Frozen train-centered float64 Gaussian projection; no data-based tuning.
++
++    For G[d,64] ~ N(0,1/64), z(x)=(x-train_mean) @ G.
++    query returns ||z(p)-z(q)||^2 in candidate_ids order, or reference order.
++    Constructor only needs the existing training/reference arrays. It never
++    receives validation, test, audit queries, bandwidth, or ground-truth KDE.
++    """
++    def __init__(self, reference32, train32, cache_dir=None):
++        start = time.perf_counter_ns()
++        reference = np.asarray(reference32, dtype=np.float32)
++        training = np.asarray(train32, dtype=np.float32)
++        if reference.ndim != 2 or training.ndim != 2 or reference.shape[1] != training.shape[1]:
++            raise ValueError('Reference and training feature dimensions must match')
++        if len(reference) == 0 or len(training) == 0 or not np.isfinite(reference).all() or not np.isfinite(training).all():
++            raise ValueError('Finite nonempty training and reference required')
++        self.n, self.dimension = reference.shape
++        self.output_dimension = PROJECTION_DIMENSION
++        signature = dict(seed=SEED,projection_dimension=PROJECTION_DIMENSION,
++            projection_dtype='float64',reference_sha256=_sha_array(reference),
++            training_sha256=_sha_array(training),reference_shape=list(reference.shape),
++            training_shape=list(training.shape),distribution='N(0, 1/64) iid',
++            centering='float64 training arithmetic mean')
++        folder = Path(cache_dir) if cache_dir is not None else None
++        path = folder/'projection64.npz' if folder is not None else None
++        self.cache_loaded = bool(path is not None and path.exists())
++        if self.cache_loaded:
++            record = json.loads((folder/'metadata.json').read_text())
++            if record['signature'] != signature:
++                raise RuntimeError('Projection cache inputs do not match frozen configuration')
++            with np.load(path) as stored:
++                self.mean = stored['training_mean']
++                self.matrix = stored['gaussian_matrix']
++                self.reference_projected = stored['reference_projected']
++                self.reference_projected_norm2 = stored['reference_projected_norm2']
++            for name,array in [('training_mean',self.mean),('gaussian_matrix',self.matrix),
++                               ('reference_projected',self.reference_projected),
++                               ('reference_projected_norm2',self.reference_projected_norm2)]:
++                if _sha_array(array) != record['array_sha256'][name]:
++                    raise RuntimeError('Projection cache checksum mismatch: '+name)
++            self.fit_record = record
++        else:
++            self.mean = np.mean(training,axis=0,dtype=np.float64)
++            rng = np.random.default_rng(SEED)
++            self.matrix = np.ascontiguousarray(rng.normal(0.,1/np.sqrt(PROJECTION_DIMENSION),
++                                            size=(self.dimension,PROJECTION_DIMENSION)),dtype=np.float64)
++            self.reference_projected = np.ascontiguousarray(
++                (np.asarray(reference,dtype=np.float64)-self.mean) @ self.matrix,dtype=np.float64)
++            self.reference_projected_norm2 = np.einsum('ij,ij->i',self.reference_projected,self.reference_projected)
++            arrays = dict(training_mean=self.mean,gaussian_matrix=self.matrix,
++                          reference_projected=self.reference_projected,
++                          reference_projected_norm2=self.reference_projected_norm2)
++            self.fit_record = dict(signature=signature,
++                array_sha256={name:_sha_array(array) for name,array in arrays.items()},
++                build_ns=time.perf_counter_ns()-start,
++                offline_full_dimension_projection_inner_products=self.n*PROJECTION_DIMENSION,
++                matrix_bytes=int(self.matrix.nbytes),training_mean_bytes=int(self.mean.nbytes),
++                reference_projection_bytes=int(self.reference_projected.nbytes),
++                reference_projected_norm_bytes=int(self.reference_projected_norm2.nbytes),
++                auxiliary_reference_bytes=int(self.reference_projected.nbytes+self.reference_projected_norm2.nbytes))
++            if folder is not None:
++                folder.mkdir(parents=True,exist_ok=True)
++                np.savez(path,**arrays)
++                (folder/'metadata.json').write_text(json.dumps(self.fit_record,indent=2))
++        self.offline_record = dict(self.fit_record,cache_loaded=self.cache_loaded,
++            load_or_build_ns=time.perf_counter_ns()-start,
++            storage_bytes=int(self.mean.nbytes+self.matrix.nbytes+self.reference_projected.nbytes+self.reference_projected_norm2.nbytes),
++            query_scan_complexity='O(|C|*64); C=P when candidate_ids=None',
++            target_kernel_changed=False)
++
++    def query(self, q32, candidate_ids=None):
++        start = time.perf_counter_ns()
++        q = np.asarray(q32,dtype=np.float64)
++        if q.shape != (self.dimension,) or not np.isfinite(q).all():
++            raise ValueError('Finite query with original feature dimension required')
++        t = time.perf_counter_ns()
++        projected = (q-self.mean) @ self.matrix
++        projection_ns = time.perf_counter_ns()-t
++        t = time.perf_counter_ns()
++        if candidate_ids is None:
++            refs = self.reference_projected
++            norm2 = self.reference_projected_norm2
++            count = self.n
++        else:
++            ids = np.asarray(candidate_ids,dtype=np.int64)
++            refs = self.reference_projected[ids]
++            norm2 = self.reference_projected_norm2[ids]
++            count = len(ids)
++        d2 = np.maximum(0.,norm2 + float(projected@projected) - 2*(refs@projected))
++        score_ns = time.perf_counter_ns()-t
++        return dict(d2hat=d2,projection_ns=projection_ns,low_dim_score_ns=score_ns,
++            total_ns=time.perf_counter_ns()-start,
++            full_dimension_projection_inner_products=PROJECTION_DIMENSION,
++            full_dimension_query_reference_distances=0,
++            low_dim_score_evaluations=count,low_dim_score_dimension=PROJECTION_DIMENSION,
++            reference_projection_bytes=int(self.reference_projected.nbytes),
++            reference_projected_norm_bytes=int(self.reference_projected_norm2.nbytes),
++            projection_matrix_bytes=int(self.matrix.nbytes),training_mean_bytes=int(self.mean.nbytes),
++            offline_build_ns=int(self.fit_record['build_ns']))
+diff --git a/mech_annulus_project_clean/revision/sprint_scores.py b/mech_annulus_project_clean/revision/sprint_scores.py
+new file mode 100644
+index 0000000..2cc1d64
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_scores.py
+@@ -0,0 +1,178 @@
++"""Frozen-score adapters for the 2026-09-16 sprint.
++
++Only train/reference pairs fit score-to-angle maps. Query receives no true
++query/reference distances. Equal-occupancy groups use reference ID to break ties.
++"""
++import json
++import time
++from pathlib import Path
++import numpy as np
++import torch
++from sklearn.isotonic import IsotonicRegression
++
++SEED = 20260916
++PAIR_COUNT = 4096
++
++
++def quantile_groups(candidate_ids, approximate_d2, layers):
++    ids = np.asarray(candidate_ids, dtype=np.int64)
++    d2 = np.asarray(approximate_d2, dtype=np.float64)
++    if len(ids) != len(d2) or layers < 1:
++        raise ValueError('Invalid grouping input')
++    if not np.isfinite(d2).all() or len(np.unique(ids)) != len(ids):
++        raise ValueError('Finite scores and distinct candidate IDs required')
++    order = np.lexsort((ids, d2))
++    return [x for x in np.array_split(ids[order], min(layers, len(ids))) if len(x)] if len(ids) else []
++
++
++def _normed_latents(model, x, tables, bits):
++    out = []
++    with torch.no_grad():
++        for i in range(0, len(x), 256):
++            hs = model.encode_continuous(torch.from_numpy(np.asarray(x[i:i+256], dtype=np.float32)))
++            z = np.stack([h[:, :bits].numpy() for h in hs[:tables]], axis=1)
++            lengths = np.linalg.norm(z, axis=2, keepdims=True)
++            z = z / np.maximum(lengths, np.finfo(np.float32).tiny)
++            out.append(z.reshape(len(z), tables * bits) / np.sqrt(tables))
++    return np.ascontiguousarray(np.concatenate(out), dtype=np.float32)
++
++
++class ScoreModel:
++    """Low-dimensional score and train-only monotone angular calibration.
++
++    The real score averages per-encoder tanh-latent cosine similarities, matching
++    the existing model's cosine training objective. No network weights are fit.
++    All stored reference norms refer to the original transformed feature space.
++    query(..., encoded=encode_query(q)) can reuse one MECH forward for retrieval
++    and real scoring. Passing just codes avoids a second forward for Hamming.
++    """
++    def __init__(self, reference32, train32, model, index, cache_dir=None):
++        start = time.perf_counter_ns()
++        self.model = model.eval()
++        self.index = index
++        self.tables = int(index.tables_count)
++        self.bits = int(index.bits)
++        self.dimension = reference32.shape[1]
++        self.n = len(reference32)
++        self.reference_norms = np.linalg.norm(np.asarray(reference32, dtype=np.float64), axis=1)
++        self.reference_codes = np.ascontiguousarray(np.stack(index.point_codes, axis=1), dtype=np.int64)
++        self.reference_real = _normed_latents(model, reference32, self.tables, self.bits)
++        self.popcount = np.asarray([bin(i).count('1') for i in range(1 << self.bits)], dtype=np.uint8)
++        self.maps = {}
++        folder = Path(cache_dir) if cache_dir is not None else None
++        marker = folder / 'calibration.npz' if folder is not None else None
++        if marker is not None and marker.exists():
++            z = np.load(marker)
++            for kind in ('hamming', 'real'):
++                self.maps[kind] = (z[kind+'_x'], z[kind+'_theta'])
++            self.fit_record = json.loads((folder/'metadata.json').read_text())
++        else:
++            self._fit(reference32, train32)
++            if folder is not None:
++                folder.mkdir(parents=True, exist_ok=True)
++                arrays = {}
++                for kind, (x, y) in self.maps.items():
++                    arrays[kind+'_x'], arrays[kind+'_theta'] = x, y
++                arrays.update(training_pair_ids=self.training_pair_ids,
++                              reference_pair_ids=self.reference_pair_ids)
++                np.savez(marker, **arrays)
++                (folder/'metadata.json').write_text(json.dumps(self.fit_record, indent=2))
++        self.offline_record = dict(self.fit_record,
++            load_or_build_ns=time.perf_counter_ns()-start,
++            extra_reference_real_bytes=int(self.reference_real.nbytes),
++            extra_reference_norm_bytes=int(self.reference_norms.nbytes),
++            auxiliary_reference_code_bytes=int(self.reference_codes.nbytes),
++            auxiliary_popcount_bytes=int(self.popcount.nbytes))
++
++    def _fit(self, reference32, train32):
++        t = time.perf_counter_ns()
++        rng = np.random.default_rng(SEED)
++        it = rng.integers(len(train32), size=PAIR_COUNT)
++        ir = rng.integers(len(reference32), size=PAIR_COUNT)
++        self.training_pair_ids, self.reference_pair_ids = it, ir
++        train_real = _normed_latents(self.model, train32, self.tables, self.bits)
++        train_codes = []
++        with torch.no_grad():
++            for i in range(0, len(train32), 256):
++                hs = self.model.encode_continuous(torch.from_numpy(train32[i:i+256]))
++                code = []
++                for l in range(self.tables):
++                    binary = hs[l][:, :self.bits].numpy() >= self.index.thresholds[l]
++                    code.append(np.sum(binary.astype(np.int64) * (1 << np.arange(self.bits)), axis=1))
++                train_codes.append(np.stack(code, axis=1))
++        train_codes = np.concatenate(train_codes)
++        true_theta = []
++        for j in range(0, PAIR_COUNT, 128):
++            a = np.asarray(train32[it[j:j+128]], dtype=np.float64)
++            b = np.asarray(reference32[ir[j:j+128]], dtype=np.float64)
++            prod = np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1)
++            cosine = np.divide(np.einsum('ij,ij->i', a, b), prod,
++                               out=np.ones(len(a)), where=prod > 0)
++            true_theta.extend(np.arccos(np.clip(cosine, -1, 1)))
++        theta = np.asarray(true_theta)
++        hamming = self.popcount[np.bitwise_xor(train_codes[it], self.reference_codes[ir])].sum(axis=1)/(self.tables*self.bits)
++        real = 1-np.einsum('ij,ij->i', train_real[it].astype(np.float64), self.reference_real[ir].astype(np.float64))
++        details = {}
++        for kind, score in [('hamming', hamming), ('real', real)]:
++            iso = IsotonicRegression(increasing=True, out_of_bounds='clip').fit(score, theta)
++            self.maps[kind] = (iso.X_thresholds_.astype(float), iso.y_thresholds_.astype(float))
++            details[kind] = dict(unique_training_scores=int(len(np.unique(score))),
++                                knots=int(len(iso.X_thresholds_)),
++                                training_angle_mae=float(np.mean(np.abs(iso.predict(score)-theta))))
++        self.fit_record = dict(seed=SEED, pair_count=PAIR_COUNT, calibration_source='train/reference only',
++            model_retrained=False, real_score='1 - mean per-table tanh-latent cosine',
++            monotone_direction='increasing', table_count=self.tables, bits=self.bits,
++            fit_ns=time.perf_counter_ns()-t, score_fits=details,
++            tie_rule='lexicographic (approximate squared distance, reference ID)')
++
++    def encode_query(self, q32):
++        t = time.perf_counter_ns()
++        with torch.no_grad():
++            hs = self.model.encode_continuous(torch.from_numpy(np.asarray(q32, dtype=np.float32))[None, :])
++        codes = []
++        z = []
++        for l in range(self.tables):
++            h = hs[l][0, :self.bits].numpy()
++            codes.append(int(np.sum((h >= self.index.thresholds[l]).astype(np.int64) * (1 << np.arange(self.bits)))))
++            z.append(h / max(float(np.linalg.norm(h)), np.finfo(np.float32).tiny))
++        real = np.ascontiguousarray(np.concatenate(z) / np.sqrt(self.tables), dtype=np.float32)
++        return dict(codes=codes, real=real, query_encode_ns=time.perf_counter_ns()-t,
++                    full_dimension_encoder_inner_products=self.tables*self.bits)
++
++    def query(self, q32, candidate_ids, codes=None, kind='hamming', encoded=None):
++        start = time.perf_counter_ns()
++        ids = np.asarray(candidate_ids, dtype=np.int64)
++        if kind not in ('hamming', 'real'):
++            raise ValueError(kind)
++        encoding_ns = 0
++        encoder_dots = 0
++        if encoded is None and (codes is None or kind == 'real'):
++            encoded = self.encode_query(q32)
++            encoding_ns = encoded['query_encode_ns']
++            encoder_dots = encoded['full_dimension_encoder_inner_products']
++        if codes is None:
++            codes = encoded['codes']
++        t = time.perf_counter_ns()
++        if kind == 'hamming':
++            raw = self.popcount[np.bitwise_xor(self.reference_codes[ids], np.asarray(codes))].sum(axis=1)/(self.tables*self.bits)
++        else:
++            raw = 1-np.asarray(self.reference_real[ids], dtype=np.float64) @ np.asarray(encoded['real'], dtype=np.float64)
++        score_ns = time.perf_counter_ns()-t
++        t = time.perf_counter_ns()
++        x, theta = self.maps[kind]
++        angle = np.interp(raw, x, theta)
++        calibration_ns = time.perf_counter_ns()-t
++        t = time.perf_counter_ns()
++        qnorm = float(np.linalg.norm(np.asarray(q32, dtype=np.float64)))
++        pnorm = self.reference_norms[ids]
++        d2 = np.maximum(0., qnorm*qnorm + pnorm*pnorm - 2*qnorm*pnorm*np.cos(angle))
++        norm_combine_ns = time.perf_counter_ns()-t
++        return dict(d2hat=d2, raw_score=raw, theta_hat=angle, query_norm=qnorm,
++            query_encode_ns=encoding_ns, low_dim_score_ns=score_ns,
++            score_calibration_ns=calibration_ns, norm_combine_ns=norm_combine_ns,
++            score_total_ns=time.perf_counter_ns()-start,
++            low_dim_score_evaluations=len(ids), low_dim_score_dimension=self.tables*self.bits,
++            hamming_table_comparisons=len(ids)*self.tables if kind=='hamming' else 0,
++            original_space_query_norm_evaluations=1,
++            full_dimension_encoder_inner_products=encoder_dots,
++            full_dimension_query_reference_distances=0)
+diff --git a/mech_annulus_project_clean/revision/sprint_select.py b/mech_annulus_project_clean/revision/sprint_select.py
+new file mode 100644
+index 0000000..080672d
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_select.py
+@@ -0,0 +1,33 @@
++"""Validation-only final selection and matched-component effect record."""
++import json,time
++import numpy as np,pandas as pd
++from sprint_common import ROOT,DATASETS,save_json
++V=ROOT/'results/validation';s=pd.read_csv(V/'finalist_summary.csv');configs=json.loads((V/'screen_configs.json').read_text());rows=[]
++for key,g in s.groupby('config'):
++    w=g.pivot(index='dataset',columns='budget',values='recovery')
++    qualified=((w[64]>=.5)&(w[128]>=.5))|((w[128]>=.5)&(w[256]>=.5))
++    rows.append(dict(config=key,qualifying_datasets=int(qualified.sum()),median_recovery=float(g.recovery.median()),geomean_latency_ms=float(np.exp(np.log(g.median_time_ms).mean()))))
++compare=[]
++for key,parent in [('b1a_projection64_neyman','b1a_projection64'),('b1a_projection64','matched_projection64')]:
++    a=s[s.config==key].set_index(['dataset','budget']);b=s[s.config==parent].set_index(['dataset','budget'])
++    # All validation query/seed/budget observations have equal weight in error means.
++    bydataset=(a.mean_relative_error.groupby('dataset').mean()/b.mean_relative_error.groupby('dataset').mean())
++    ratio=a.mean_relative_error.mean()/b.mean_relative_error.mean()
++    passed=bool(ratio<.98 and (bydataset<1).sum()>=2 and (bydataset<=1.05).all())
++    compare.append(dict(config=key,parent=parent,pooled_error_ratio=float(ratio),per_dataset_error_ratios=bydataset.to_dict(),increment_constraint_passed=passed))
++assert compare[0]['increment_constraint_passed']==False
++assert compare[1]['increment_constraint_passed']==True
++chosen='b1a_projection64'
++boot=[];rng=np.random.default_rng(20260916)
++for dataset in DATASETS:
++    frames={k:pd.read_csv(V/dataset/(k+'.csv')) for k in ['uniform_mc','exact_annular','b1a_projection64','matched_projection64','b1a_projection64_neyman']}
++    for M in [64,128,256]:
++        means={k:f[f.budget==M].groupby('query_id').relative_error.mean().sort_index().to_numpy() for k,f in frames.items()}
++        ids=rng.integers(0,80,size=(1000,80))
++        for other in ['matched_projection64','b1a_projection64_neyman']:
++            dif=means[chosen]-means[other];samples=dif[ids].mean(axis=1)
++            boot.append(dict(dataset=dataset,budget=M,contrast=chosen+' minus '+other,mean_error_difference=float(dif.mean()),ci_low=float(np.quantile(samples,.025)),ci_high=float(np.quantile(samples,.975)),resampling_unit='query; five seeds averaged within query',resamples=1000))
++record=dict(selected=chosen,method_config=configs[chosen],candidate_method_count=11,mandatory_controls=['matched_Hquarter','matched_projection64'],selection_time_unix=time.time(),formal_queries_evaluated=False,candidate_summary=rows,component_constraints=compare,
++ reason='Both projection candidates qualify on all four datasets. Neyman has higher median Recovery but fails the per-dataset error guard on Amazon when pooling all validation budgets equally. Proportional projection strata pass the independent matched-H gain requirement on all four datasets and retain the simpler lower-latency estimator.',
++ clarification='Per-dataset component guard uses mean error over all query/seed/budget observations (ratio of dataset means), not an average of per-budget ratios. No test/audit selection.')
++save_json(V/'selection_decision.json',record);pd.DataFrame(boot).to_csv(V/'matched_bootstrap.csv',index=False);print(json.dumps(record,indent=2))
+diff --git a/mech_annulus_project_clean/revision/sprint_smoke.py b/mech_annulus_project_clean/revision/sprint_smoke.py
+new file mode 100644
+index 0000000..f439823
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_smoke.py
+@@ -0,0 +1,19 @@
++import json,time
++import numpy as np,pandas as pd
++import core as c
++from sprint_common import load_data,ROOT,DATASETS,save_json
++rows=[]
++for name in DATASETS:
++ d=load_data(name);e=d['old']
++ saved=pd.read_csv(ROOT/'prior_final/studies/c5_L12_b2_D12_J8_epoch24'/name/'queries.csv')
++ for qi,q in enumerate(d['arrays']['validation'][:5]):
++  truth=c.exact_log_mean(e.points,q,e.h)
++  for seed in [0,1]:
++   z=e.evaluate('approx_annular_mech',q,128,np.random.default_rng(seed+qi*100003))
++   old=saved[(saved.query_id==qi)&(saved.seed==seed)&(saved.budget==128)].iloc[0]
++   rows.append(dict(dataset=name,query_id=qi,raw_row_id=int(d['split']['validation'][qi]),seed=seed,log_estimate=z['log_estimate'],saved_log_estimate=old.log_estimate,estimate_pass=bool(np.isclose(z['log_estimate'],old.log_estimate,rtol=0,atol=1e-12)),truth_pass=bool(np.isclose(truth,old.log_truth,rtol=0,atol=1e-12)),budget_pass=z['actual_samples']==128,time_ms=z['time_ns']/1e6))
++ print(name,'smoke complete',flush=True)
++out=ROOT/'results/smoke';out.mkdir(exist_ok=True)
++pd.DataFrame(rows).to_csv(out/'baseline_smoke.csv',index=False)
++assert all(x['estimate_pass'] and x['truth_pass'] and x['budget_pass'] for x in rows)
++save_json(out/'PASS.json',dict(checks=3*len(rows),queries=20,all_passed=True))
+diff --git a/mech_annulus_project_clean/revision/sprint_validate.py b/mech_annulus_project_clean/revision/sprint_validate.py
+new file mode 100644
+index 0000000..fb638d5
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/sprint_validate.py
+@@ -0,0 +1,82 @@
++"""Bounded validation screen and prospective shortlist. Never loads formal queries."""
++import json,time,argparse,hashlib
++from pathlib import Path
++import numpy as np,pandas as pd
++import core as c
++from sprint_common import ROOT,DATASETS,load_data,save_json
++from sprint_evaluator import SprintEvaluator
++OUT=ROOT/'results/validation';OUT.mkdir(parents=True,exist_ok=True)
++CACHE={}
++
++def objects(name):
++    if name not in CACHE:
++        d=load_data(name);e=SprintEvaluator(d)
++        truth=[c.exact_log_mean(d['points'],q,d['old'].h) for q in d['arrays']['validation']]
++        CACHE[name]=(d,e,truth)
++        save_json(OUT/name/'offline.json',dict(d['offline'],score=e.score.offline_record))
++    return CACHE[name]
++
++def run_config(key,cfg,budgets=(128,),control=None):
++    control=control if control is not None else (cfg or {}).get('control')
++    results=[]
++    for name in DATASETS:
++        d,e,truth=objects(name);path=OUT/name/(key+'.csv');done=pd.read_csv(path) if path.exists() else pd.DataFrame()
++        if cfg is not None and cfg['score']=='projection64':e.ensure_projection()
++        identity=dict(config=cfg,control=control,split='validation',sampling_seeds=list(range(5)),query_count=80)
++        manifest=path.with_suffix('.identity.json')
++        if manifest.exists() and json.loads(manifest.read_text())!=identity:raise RuntimeError('Cached configuration identity changed: '+key)
++        if not manifest.exists():save_json(manifest,identity)
++        existing=set(done.budget.unique()) if len(done) else set();rows=[]
++        for budget0 in existing:
++            sub=done[done.budget==budget0]
++            if len(sub)!=400 or sub[['query_id','seed']].drop_duplicates().shape[0]!=400:raise RuntimeError('Incomplete cached validation block')
++        for budget in budgets:
++            if budget in existing:continue
++            if cfg is None:
++                d['old'].evaluate(key,d['arrays']['validation'][0],budget,np.random.default_rng(987))
++            else:e.evaluate(d['arrays']['validation'][0],budget,np.random.default_rng(987),cfg,control)
++            for qi,q in enumerate(d['arrays']['validation']):
++                for seed in range(5):
++                    rng=np.random.default_rng(seed+qi*100003)
++                    z=d['old'].evaluate(key,q,budget,rng) if cfg is None else e.evaluate(q,budget,rng,cfg,control)
++                    z.update(c.errors(z.pop('log_estimate'),truth[qi]))
++                    rows.append(dict(dataset=name,config=key,query_id=qi,raw_row_id=int(d['split']['validation'][qi]),budget=budget,seed=seed,**z))
++            print(json.dumps(dict(event='validation',dataset=name,config=key,budget=budget,rows=len(rows))),flush=True)
++        if rows:
++            new=pd.DataFrame(rows);done=pd.concat([done,new],ignore_index=True) if len(done) else new
++            done.to_csv(path,index=False)
++        results.append(done)
++    return pd.concat(results,ignore_index=True)
++
++def summarize(configs,budgets=(128,)):
++    rows=[]
++    for name in DATASETS:
++        u=pd.read_csv(OUT/name/'uniform_mc.csv');x=pd.read_csv(OUT/name/'exact_annular.csv')
++        for key,cfg in configs.items():
++            f=pd.read_csv(OUT/name/(key+'.csv'))
++            for budget in budgets:
++                f0=f[f.budget==budget]
++                if len(f0)==0:continue
++                eu=u[u.budget==budget].relative_error.mean();ex=x[x.budget==budget].relative_error.mean();ef=f0.relative_error.mean();den=eu-ex
++                rec=(eu-ef)/den if den>max(1e-8,.01*eu) else np.nan
++                rows.append(dict(dataset=name,config=key,budget=budget,mean_relative_error=ef,MC=eu,exact_annular=ex,recovery=rec,relative_reduction_MC=(eu-ef)/eu,median_time_ms=f0.time_ns.median()/1e6,kernel_evaluations=f0.kernel_evaluations.mean(),**cfg))
++    return pd.DataFrame(rows)
++
++def screen():
++    for method in ['uniform_mc','exact_annular']:run_config(method,None,(64,128,256))
++    configs={}
++    for score in ['hamming','real']:
++        for J in [4,8]:
++            key=f'b0_{score}_J{J}';cfg=dict(score=score,J=J,H_fraction=0.,grouping='quantile',full_target=False,allocation='proportional');configs[key]=cfg;run_config(key,cfg)
++    s=summarize(configs);r=s.groupby('config').agg(score=('recovery','median'),latency=('median_time_ms','mean')).sort_values('score',ascending=False)
++    top=r.score.max();best=r[r.score>=top-.02].sort_values('latency').index[0];base=configs[best].copy()
++    save_json(OUT/'B0_choice.json',dict(selected=best,score=r.to_dict('index'),basis='M128 validation median Recovery; .02-close latency tie'))
++    additional=[('a_old_H0',dict(base,grouping='old',full_target=True,H_fraction=0.)),('a_old_Hquarter',dict(base,grouping='old',full_target=True,H_fraction=.25)),('b0a_H0',dict(base,full_target=True,H_fraction=0.)),('b0a_Hquarter',dict(base,full_target=True,H_fraction=.25)),('b0a_Hquarter_neyman',dict(base,full_target=True,H_fraction=.25,allocation='neyman'))]
++    for key,cfg in additional:configs[key]=cfg;run_config(key,cfg)
++    # Matched H control is recorded for attribution, not silently called novel.
++    cfg=dict(base,full_target=True,H_fraction=.25,control='single');configs['matched_Hquarter']=cfg;run_config('matched_Hquarter',cfg,control='single')
++    s=summarize(configs);s.to_csv(OUT/'screen_summary.csv',index=False);save_json(OUT/'screen_configs.json',configs)
++    print(s.pivot(index='config',columns='dataset',values='mean_relative_error').round(4).to_string(),flush=True)
++    print(s.groupby('config').recovery.median().sort_values(ascending=False).to_string(),flush=True)
++
++if __name__=='__main__':screen()
+diff --git a/mech_annulus_project_clean/revision/test_sprint_estimator.py b/mech_annulus_project_clean/revision/test_sprint_estimator.py
+new file mode 100644
+index 0000000..39b3c15
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/test_sprint_estimator.py
+@@ -0,0 +1,194 @@
++"""Exact finite-population checks plus budget and implementation edge cases."""
++import argparse
++import csv
++import hashlib
++import itertools
++import json
++import math
++from pathlib import Path
++import sys
++import numpy as np
++from sprint_estimator import estimate_strata, allocate_counts, _expand_complement_positions
++
++
++class ScriptedRNG:
++    def __init__(self, choices):
++        self.choices = [np.asarray(x, dtype=np.int64) for x in choices]
++        self.used = 0
++    def choice(self, a, size, replace):
++        assert not replace
++        if self.used < len(self.choices):
++            ids = self.choices[self.used]
++        else:
++            ids = np.arange(size, dtype=np.int64)
++        self.used += 1
++        assert len(ids) == size and len(np.unique(ids)) == size
++        assert np.all((ids >= 0) & (ids < a))
++        return ids
++
++
++def kernel(values):
++    values = np.asarray(values, dtype=float)
++    logs = np.full(len(values), -np.inf)
++    logs[values > 0] = np.log(values[values > 0])
++    def evaluate(ids):
++        return logs[ids]
++    return evaluate
++
++
++def invariants(result, n, budget):
++    ids = result['selected_ids']
++    assert len(ids) == min(n, budget) == result['actual_samples']
++    assert len(np.unique(ids)) == len(ids)
++    assert sum(result['kernel_call_sizes']) == len(ids)
++    assert result['kernel_calls'] <= 2
++    assert result['H_count'] + int(result['cell_sizes'].sum()) == n
++    assert result['H_count'] + int((result['pilot_counts'] + result['main_counts']).sum()) == len(ids)
++    remaining = result['cell_sizes'] - result['pilot_counts']
++    assert np.all(result['main_counts'][remaining > 0] >= 1)
++    assert np.all(result['main_counts'] <= remaining)
++    assert result['unassigned_ns'] >= 0
++    for pilots, main in zip(result['pilot_ids'], result['main_ids']):
++        assert not np.intersect1d(pilots, main).size
++
++
++def conditional_enumeration(values, label, rows):
++    n = 11
++    H = np.array([0])
++    cells = [np.arange(1, 6), np.arange(6, 11)]
++    pilot_options = list(itertools.combinations(range(5), 2))
++    target = float(np.mean(values))
++    kernel_fn = kernel(values)
++    seen_allocations = set()
++    total_outcomes = 0
++    for pa, pb in itertools.product(pilot_options, repeat=2):
++        probe = estimate_strata(n, H, cells, 8, ScriptedRNG([pa, pb]), kernel_fn,
++                                 'neyman', validate=True)
++        counts = probe['main_counts']
++        assert probe['effective_allocation'] == 'neyman'
++        seen_allocations.add(tuple(map(int, counts)))
++        options = [list(itertools.combinations(range(3), int(b))) for b in counts]
++        estimates = []
++        for ma, mb in itertools.product(*options):
++            result = estimate_strata(n, H, cells, 8, ScriptedRNG([pa, pb, ma, mb]),
++                                     kernel_fn, 'neyman', validate=True)
++            invariants(result, n, 8)
++            estimates.append(math.exp(result['log_estimate']))
++        mean = float(np.mean(estimates))
++        error = abs(mean - target)
++        assert error <= 1e-13 * max(1., abs(target)), (label, pa, pb, mean, target)
++        rows.append({'case': label, 'pilot_cell_0': str(pa), 'pilot_cell_1': str(pb),
++                     'main_counts': str(tuple(map(int, counts))), 'main_outcomes': len(estimates),
++                     'conditional_mean': mean, 'full_target': target, 'absolute_difference': error,
++                     'pass': True})
++        total_outcomes += len(estimates)
++    return {'case': label, 'pilot_conditions': 100, 'enumerated_main_outcomes': total_outcomes,
++            'distinct_adaptive_main_allocations': sorted(map(list, seen_allocations)), 'pass': True}
++
++
++def main(out):
++    out.mkdir(parents=True, exist_ok=True)
++    checks = []
++    conditional_rows = []
++    checks.append(conditional_enumeration(np.array([.7,.05,.1,.2,.8,1.,.01,.02,.03,.04,.9]),
++                                          'heterogeneous', conditional_rows))
++    checks.append(conditional_enumeration(np.array([0,0,0,0,0,1,0,0,0,0,0], dtype=float),
++                                          'single_spike', conditional_rows))
++    checks.append(conditional_enumeration(np.full(11, .125), 'constant', conditional_rows))
++    # Exact proportional expectation under all within-layer sample combinations.
++    vals = np.array([.5,.01,.05,.1,.4,.6,.8,1.])
++    estimates = []
++    for a in itertools.combinations(range(3), 1):
++        for b in itertools.combinations(range(4), 2):
++            r = estimate_strata(8, [0], [np.arange(1,4),np.arange(4,8)], 4,
++                                ScriptedRNG([a,b]), kernel(vals), validate=True)
++            invariants(r, 8, 4)
++            estimates.append(math.exp(r['log_estimate']))
++    assert abs(np.mean(estimates) - vals.mean()) < 1e-14
++    checks.append({'case':'proportional_exact_expectation', 'outcomes':len(estimates),
++                   'absolute_difference':abs(float(np.mean(estimates)-vals.mean())), 'pass':True})
++    # Compressed complement mapping has no omission, duplicate, or full-size mask.
++    maps = 0
++    for n in range(1,15):
++        for k in range(min(2,n)+1):
++            for excluded in itertools.combinations(range(n), k):
++                got = _expand_complement_positions(np.arange(n-k), np.asarray(excluded,dtype=int))
++                expected = np.asarray([i for i in range(n) if i not in excluded])
++                assert np.array_equal(got, expected)
++                maps += 1
++    checks.append({'case':'complement_position_bijection', 'cases':maps, 'pass':True})
++    # All these labels indicate how callers form cells; estimator sees a full partition.
++    cases = [
++        ('empty_C_one_residual',20,[],[np.arange(20)],7),
++        ('C_equals_P',20,[],list(np.array_split(np.arange(20),4)),9),
++        ('singleton_H',1,[0],[],1),
++        ('singleton_cell',1,[],[np.array([0])],1),
++        ('empty_cells_ignored',4,[],[np.array([],dtype=int),np.arange(4)],2),
++        ('budget_exceeds_n',7,[0,1],[np.arange(2,5),np.arange(5,7)],32),
++        ('budget_equals_n',7,[0,1],[np.arange(2,5),np.arange(5,7)],7),
++        ('M32_neyman',100,np.arange(8),list(np.array_split(np.arange(8,100),5)),32),
++        ('M32_pilot_fallback',40,np.arange(8),list(np.array_split(np.arange(8,40),16)),32),
++        ('merge_before_pilot',40,np.arange(8),list(np.array_split(np.arange(8,40),16)),10),
++        ('minimal_one_sample',20,[],list(np.array_split(np.arange(20),4)),1),
++        ('singletons_mixed',20,[0],[np.array([1]),np.arange(2,6),np.arange(6,20)],8),
++    ]
++    for label,n,H,cells,budget in cases:
++        for mode in ['proportional','neyman']:
++            for seed in range(10):
++                trace = []
++                def constant_kernel(ids):
++                    trace.extend(map(int,ids))
++                    return np.full(len(ids), -1000.)
++                r = estimate_strata(n,H,cells,budget,np.random.default_rng(seed),constant_kernel,
++                                    mode,validate=True)
++                invariants(r,n,budget)
++                assert len(trace) == len(set(trace)) == min(n,budget)
++                assert abs(r['log_estimate'] + 1000.) < 1e-11
++                if label == 'M32_pilot_fallback':
++                    assert mode == 'proportional' or r['effective_allocation'] == 'proportional'
++                if label == 'merge_before_pilot':
++                    assert r['merged_cells']
++            checks.append({'case':label, 'allocation':mode, 'seeds':10, 'pass':True})
++    # Arbitrary allocations always consume budget and obey capacities/minima.
++    alloc_cases = 0
++    for n in range(1,25):
++        for groups in range(1,min(7,n)+1):
++            sizes = np.asarray([len(x) for x in np.array_split(np.arange(n),groups)])
++            for budget in range(groups,n+3):
++                for weights in [None, np.zeros(groups), np.arange(groups,dtype=float), np.ones(groups)]:
++                    a = allocate_counts(sizes,budget,weights)
++                    assert a.sum() == min(n,budget) and np.all(a>=1) and np.all(a<=sizes)
++                    alloc_cases += 1
++    checks.append({'case':'allocation_capacity_minimum_budget', 'cases':alloc_cases,'pass':True})
++    # Invalid coverage must fail in explicit validation mode.
++    bad = [(4,[0],[[1,1,3]],2), (4,[0],[[1,2,4]],2), (4,[0,1],[[2,3]],1)]
++    for n,H,cells,budget in bad:
++        try:
++            estimate_strata(n,H,cells,budget,np.random.default_rng(0),kernel(np.ones(n)),validate=True)
++        except ValueError:
++            pass
++        else:
++            raise AssertionError('Invalid partition or budget accepted')
++    checks.append({'case':'invalid_partition_or_H_budget_rejected','cases':len(bad),'pass':True})
++    # Equal-valued pilot logs may all be -inf; positive nonpilot mass remains sampleable.
++    def all_zero(ids):
++        return np.full(len(ids), -np.inf)
++    r = estimate_strata(30,[],list(np.array_split(np.arange(30),4)),20,
++                        np.random.default_rng(5),all_zero,'neyman',validate=True)
++    invariants(r,30,20)
++    assert r['log_estimate'] == -np.inf
++    checks.append({'case':'all_zero_kernel_no_nan','pass':True})
++    with (out/'conditional_expectation.csv').open('w',newline='') as f:
++        writer=csv.DictWriter(f,fieldnames=list(conditional_rows[0]));writer.writeheader();writer.writerows(conditional_rows)
++    source = Path(__file__).with_name('sprint_estimator.py')
++    report={'pass':True,'python':sys.version,'numpy':np.__version__,
++            'estimator_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),
++            'checks':checks,'conditional_cases':len(conditional_rows),
++            'max_conditional_absolute_error':max(r['absolute_difference'] for r in conditional_rows),
++            'note':'Every pilot condition enumerates all possible formal uniform subsets; no Monte Carlo approximation to the conditional expectation.'}
++    (out/'summary.json').write_text(json.dumps(report,indent=2)+'\n')
++    print(json.dumps(report,indent=2))
++
++if __name__ == '__main__':
++    parser=argparse.ArgumentParser();parser.add_argument('--out',type=Path,required=True)
++    main(parser.parse_args().out)

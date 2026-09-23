@@ -1,0 +1,44 @@
+{
+  "dataset": "cifar10_gist512",
+  "raw_shape": [
+    60000,
+    512
+  ],
+  "split_counts": {
+    "train": 2800,
+    "reference": 1800,
+    "validation": 80,
+    "test": 200
+  },
+  "data_file": "cifar10-Gist512/Cifar10-Gist512.mat",
+  "data_sha256": "0d55fa328e8fe5a262498a5967f01f91d0ab5e053ddbbe49e473609a22cf5aff",
+  "training": {
+    "tables": 12,
+    "bits": 5,
+    "epochs": 24,
+    "batch_size": 128,
+    "lr": 0.001,
+    "alpha": 1.0,
+    "beta": 0.1,
+    "gamma_balance": 0.1,
+    "gamma_decorrelation": 0.1,
+    "device": "cpu"
+  },
+  "model_seed": 20260915,
+  "model_sha256": "9e64f9f25349ed2dd70e11e4abe0bbcf020b31d14d08196857fb3be24f35691d",
+  "preprocessing_sha256": "603e10abd6b71c3f915534962ac462ed22278224fd5b698a156653cb42e31229",
+  "split_sha256": "661adb1f6c85c01e57a910704dedf205f2578e1af25d6fea13b88dcd99f55bcf",
+  "train_seconds": 4.397460803389549,
+  "validation_calibration_seconds": 0.13064737617969513,
+  "radius": 9.33428519694623,
+  "bandwidth": 2.0016209018619233,
+  "delta": 1.5205900271733601,
+  "layers": 8,
+  "min_collisions": 2,
+  "hamming_probe": 2,
+  "radius_rule": "median validation-query 70th distance percentile",
+  "bandwidth_rule": ".25 * median validation-query 25th distance percentile",
+  "preprocessing": "MinMax fitted on training only; common 2*x+training max-norm anchor",
+  "code_at_training": "203778355203277b27d67da29498c9edc330ac74",
+  "peak_rss_kib": 799416
+}

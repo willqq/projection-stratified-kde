@@ -1,0 +1,36 @@
+phase,dataset,budget,deann_nondominated,main_frontier,including_controls_frontier,deann_dominators,main_dominators,including_controls_dominators
+audit,cifar10,32,False,False,False,"[""deann:M64"", ""deann:M128""]","[""deann:M64"", ""deann:M128"", ""uniform_mc:M128""]","[""deann:M64"", ""deann:M128"", ""matched_single:M64"", ""uniform_mc:M128""]"
+audit,cifar10,64,False,False,False,"[""deann:M128""]","[""deann:M128""]","[""deann:M128""]"
+audit,cifar10,128,False,False,False,"[""deann:M256""]","[""deann:M256""]","[""deann:M256""]"
+audit,cifar10,256,False,False,False,"[""deann:M512""]","[""deann:M512""]","[""deann:M512""]"
+audit,cifar10,512,True,True,True,[],[],[]
+audit,cifar10_gist512,32,False,False,False,"[""deann:M64"", ""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""deann:M512"", ""uniform_mc:M64"", ""uniform_mc:M128"", ""uniform_mc:M256""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""deann:M512"", ""matched_single:M64"", ""matched_single:M128"", ""uniform_mc:M64"", ""uniform_mc:M128"", ""uniform_mc:M256""]"
+audit,cifar10_gist512,64,False,False,False,"[""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M128"", ""deann:M256"", ""deann:M512"", ""uniform_mc:M256""]","[""deann:M128"", ""deann:M256"", ""deann:M512"", ""matched_single:M128"", ""uniform_mc:M256""]"
+audit,cifar10_gist512,128,False,False,False,"[""deann:M256"", ""deann:M512""]","[""deann:M256"", ""deann:M512"", ""uniform_mc:M512""]","[""deann:M256"", ""deann:M512"", ""matched_single:M256"", ""uniform_mc:M512""]"
+audit,cifar10_gist512,256,False,False,False,"[""deann:M512""]","[""deann:M512"", ""exact:M0""]","[""deann:M512"", ""exact:M0""]"
+audit,cifar10_gist512,512,True,False,False,[],"[""exact:M0""]","[""exact:M0""]"
+audit,isolet,32,False,False,False,"[""deann:M64"", ""deann:M128"", ""deann:M256""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""uniform_mc:M128"", ""uniform_mc:M256""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""matched_single:M64"", ""matched_single:M128"", ""uniform_mc:M128"", ""uniform_mc:M256""]"
+audit,isolet,64,False,False,False,"[""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M128"", ""deann:M256"", ""deann:M512"", ""matched_single:M128""]"
+audit,isolet,128,False,False,False,"[""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M128"", ""deann:M256"", ""deann:M512""]"
+audit,isolet,256,False,False,False,"[""deann:M256"", ""deann:M512""]","[""deann:M256"", ""deann:M512"", ""exact:M0""]","[""deann:M256"", ""deann:M512"", ""exact:M0""]"
+audit,isolet,512,True,False,False,[],"[""exact:M0""]","[""exact:M0""]"
+test,amazon,32,True,True,True,[],[],[]
+test,amazon,64,True,True,True,[],[],[]
+test,amazon,128,True,True,True,[],[],[]
+test,amazon,256,True,False,False,[],"[""exact_annular:M256"", ""exact_annular:M512""]","[""exact_annular:M256"", ""exact_annular:M512""]"
+test,amazon,512,False,False,False,"[""deann:M512""]","[""deann:M512"", ""exact:M0""]","[""deann:M512"", ""exact:M0"", ""matched_neyman:M512""]"
+test,cifar10,32,False,False,False,"[""deann:M64"", ""deann:M128""]","[""deann:M64"", ""deann:M128"", ""uniform_mc:M128""]","[""deann:M64"", ""deann:M128"", ""matched_single:M64"", ""uniform_mc:M128""]"
+test,cifar10,64,False,False,False,"[""deann:M128"", ""deann:M256""]","[""deann:M128"", ""deann:M256""]","[""deann:M128"", ""deann:M256""]"
+test,cifar10,128,False,False,False,"[""deann:M256""]","[""deann:M256""]","[""deann:M256""]"
+test,cifar10,256,False,False,False,"[""deann:M512""]","[""deann:M512""]","[""deann:M512""]"
+test,cifar10,512,True,True,True,[],[],[]
+test,cifar10_gist512,32,False,False,False,"[""deann:M64"", ""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""deann:M512"", ""uniform_mc:M64"", ""uniform_mc:M128"", ""uniform_mc:M256""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""deann:M512"", ""matched_single:M64"", ""matched_single:M128"", ""uniform_mc:M64"", ""uniform_mc:M128"", ""uniform_mc:M256""]"
+test,cifar10_gist512,64,False,False,False,"[""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M128"", ""deann:M256"", ""deann:M512"", ""uniform_mc:M128"", ""uniform_mc:M256""]","[""deann:M128"", ""deann:M256"", ""deann:M512"", ""matched_single:M128"", ""uniform_mc:M128"", ""uniform_mc:M256""]"
+test,cifar10_gist512,128,False,False,False,"[""deann:M256"", ""deann:M512""]","[""deann:M256"", ""deann:M512"", ""uniform_mc:M512""]","[""deann:M256"", ""deann:M512"", ""matched_single:M256"", ""uniform_mc:M512""]"
+test,cifar10_gist512,256,False,False,False,"[""deann:M512""]","[""deann:M512"", ""exact:M0""]","[""deann:M512"", ""exact:M0""]"
+test,cifar10_gist512,512,True,False,False,[],"[""exact:M0""]","[""exact:M0""]"
+test,isolet,32,False,False,False,"[""deann:M64"", ""deann:M128"", ""deann:M256""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""uniform_mc:M128"", ""uniform_mc:M256""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""matched_single:M64"", ""matched_single:M128"", ""uniform_mc:M128"", ""uniform_mc:M256""]"
+test,isolet,64,False,False,False,"[""deann:M64"", ""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M64"", ""deann:M128"", ""deann:M256"", ""deann:M512"", ""matched_single:M128""]"
+test,isolet,128,False,False,False,"[""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M128"", ""deann:M256"", ""deann:M512""]","[""deann:M128"", ""deann:M256"", ""deann:M512""]"
+test,isolet,256,False,False,False,"[""deann:M256"", ""deann:M512""]","[""deann:M256"", ""deann:M512"", ""exact:M0""]","[""deann:M256"", ""deann:M512"", ""exact:M0""]"
+test,isolet,512,True,False,False,[],"[""exact:M0""]","[""exact:M0""]"

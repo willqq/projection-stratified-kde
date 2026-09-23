@@ -1,0 +1,10 @@
+{
+  "source_path": "/root/autodl-tmp/icassp_sprint_20260916_0103/worktree",
+  "branch": "icassp-sprint-20260916",
+  "source_commit": "59d86dbfaaeebb7bdaace151afcec047f3e1a360",
+  "start_commit": "296379cb3c912f309bd49d97046067d191f9ff24",
+  "tracked_diff": "",
+  "untracked": "?? data\n?? mech_annulus_project_clean/revision/_posting_index.cpython-38-x86_64-linux-gnu.so\n?? mech_annulus_project_clean/revision/sprint_audit_results.py\n",
+  "bundled_refs": "59d86dbfaaeebb7bdaace151afcec047f3e1a360 refs/heads/icassp-sprint-20260916\n",
+  "independent_audit_sha256": "397e1161d38051be9e4b6818fea8cbc7d965d6e0921418a8dec07b70d3b2c10a"
+}

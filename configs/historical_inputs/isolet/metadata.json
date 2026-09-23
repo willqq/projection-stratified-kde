@@ -1,0 +1,44 @@
+{
+  "dataset": "isolet",
+  "raw_shape": [
+    6238,
+    617
+  ],
+  "split_counts": {
+    "train": 2800,
+    "reference": 1800,
+    "validation": 80,
+    "test": 200
+  },
+  "data_file": "isolet/isolet1+2+3+4.data",
+  "data_sha256": "aa935cc98ec22ee689aa5b2ddf1fdce074692f7016f0255f0982df133ccbab38",
+  "training": {
+    "tables": 12,
+    "bits": 5,
+    "epochs": 24,
+    "batch_size": 128,
+    "lr": 0.001,
+    "alpha": 1.0,
+    "beta": 0.1,
+    "gamma_balance": 0.1,
+    "gamma_decorrelation": 0.1,
+    "device": "cpu"
+  },
+  "model_seed": 20260915,
+  "model_sha256": "0ea5d5ed4cf0c937a7d518ded7f8f7e099a8dee21074e8ea2b81926f50541383",
+  "preprocessing_sha256": "88d26b69104ab6e79699fa192f2f68682e6677a68f2a733b557eab37277013ae",
+  "split_sha256": "af5fc0a3c2f9c5b83efbce6b8eec7195056da1d2b3766c7e2f3f663b537d1623",
+  "train_seconds": 4.124473556876183,
+  "validation_calibration_seconds": 0.06389013677835464,
+  "radius": 16.77281257749005,
+  "bandwidth": 3.398967249781461,
+  "delta": 3.7912557125091553,
+  "layers": 8,
+  "min_collisions": 2,
+  "hamming_probe": 2,
+  "radius_rule": "median validation-query 70th distance percentile",
+  "bandwidth_rule": ".25 * median validation-query 25th distance percentile",
+  "preprocessing": "MinMax fitted on training only; common 2*x+training max-norm anchor",
+  "code_at_training": "d15e636482c8e2fb06b1bedfdb35f3157e8c35b4",
+  "peak_rss_kib": 524248
+}

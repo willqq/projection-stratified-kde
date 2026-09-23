@@ -1,0 +1,14 @@
+{
+  "frozen": true,
+  "created_unix": 1789493791.6583865,
+  "source_commit": "59d86dbfaaeebb7bdaace151afcec047f3e1a360",
+  "final_config_sha256": "c13784f0597be16c026071098462aac74938b6faa9f020ce271453decbf81198",
+  "method_config": {
+    "score": "projection64",
+    "J": 8,
+    "H_fraction": 0.25,
+    "grouping": "quantile",
+    "full_target": true,
+    "allocation": "proportional"
+  }
+}

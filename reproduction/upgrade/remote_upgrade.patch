@@ -1,0 +1,1422 @@
+diff --git a/UPGRADE_PROTOCOL.md b/UPGRADE_PROTOCOL.md
+new file mode 100644
+index 0000000..f03241c
+--- /dev/null
++++ b/UPGRADE_PROTOCOL.md
+@@ -0,0 +1,59 @@
++# Preregistered upgrade protocol
++
++Recorded 2026-09-20 before any new algorithm measurements. The goal began at approximately 15:43 China Standard Time. Stop exploration by 2026-09-21 15:43 (24 hours); the final 90 minutes are reserved for verification and delivery. An authentication delay does not justify extending the search or inventing results.
++
++## Frozen baseline
++
++The verified source/PDF and corresponding structural, enhancement and mechanism records are copied in full to `baseline_backup/`, with a SHA-256 manifest. The source that produced the inspected final PDF is `final_verification_20260920/manuscript/ICASSP2027_EN_revised_final.tex`. The requested filename suffix `(2)` has not been located; identity follows the verified source, PDF hash and evidence, not an assumed filename match. No baseline file will be edited.
++
++The method remains Gaussian projection r=64, seed 20260916, J=8, exact projected-score subset floor(M/4), equal-population remainder, residual-capacity proportional allocation and original-space kernels. Frozen references, train-fitted preprocessing, bandwidth, query IDs and budgets are unchanged. All previous test and audit queries are exposed. No fresh-test claim will be made.
++
++## Path A: equivalent partition construction
++
++Question: does removing unnecessary within-cell sorting materially reduce complete query time?
++
++Hypothesis: multirank selection can recover exactly the same H and cell member sets as lexicographic (score, identifier) sorting, with lower construction cost.
++
++Change: partition implementation only. Use exact order-statistic boundaries. If ties cross a cut, a deterministic exact fallback must preserve the identifier tie rule. No approximate quantiles or changed scores.
++
++Correctness gates: compare every H and cell member set, population and allocation; check coverage/disjointness; include all-equal scores, repeated boundary values, shuffled IDs, small populations and every frozen budget. Validate estimates with identifier-coupled sampling outside timing. Internal permutations may change a seeded positional draw, but not its uniform without-replacement law. Tests of distribution must use the original estimator and exact analytical variance on small synthetic populations. Real validation queries receive the same membership checks.
++
++Profiling separates projection, low-dimensional scan, sorting/selection, ID gathering, cell slicing, sampling, original-space kernel evaluation and aggregation. The previous combined 78% number is not evidence of sorting alone. Instrumented breakdowns and complete-query production timing will be distinguished.
++
++Feasibility gate: no correctness failures and at least 20% lower median complete-query time for two adjacent budgets in one prespecified dataset/scale. Check all four original reference sets plus the existing real GIST n=20,000 reference set. This threshold controls project effort, not publication eligibility.
++
++## Path B: transfer to a strong ANN-selected H
++
++Question: does projected remainder stratification add value after the ANN retrieval used by well-tuned DEANN?
++
++Compare controlled ANN-H + uniform remainder with controlled ANN-H + eight projected-score remainder strata. Use precisely the same valid unique H IDs, actual H size, complement, h, total kernel count and without-replacement sampling convention. Both use the same proportional residual-capacity allocation rule. Keep official DEANN as a separately named implementation; the controlled Single estimator is not official DEANN.
++
++Use the two already validation-frozen DEANN anchors (error-selected E and latency-selected T). Their nprobe and H/M fractions are immutable during this study. No additional ANN grid. Deduplicate returned IDs, account for absent neighbors and assert H/complement disjointness and full coverage. Reuse any original-space distances already computed by the ANN precision wrapper when evaluating H, while charging their actual cost and distance counts. No query truth is passed to online code.
++
++Validation feasibility uses all 80 frozen validation queries on four datasets, M=64/128/256 and sampling seeds 0..4. Calculate conditional variance anew under each ANN-H. Do not reuse the projected-H 0.55--0.66 values. Each anchor is a full curve, not a per-test-point choice.
++
++Feasibility gate: at least one dataset has >=10% relative mean-error reduction at two adjacent budgets, positive paired query-bootstrap lower bounds, and median conditional variance ratio <=0.90 at those settings. Report all anchors/datasets including failures. If neither anchor meets this gate, stop Path B before formal evaluation. Statistical feasibility alone does not authorize a computational claim.
++
++## Timing and formal evaluation
++
++Use the existing Xeon Gold 6459C server, eight CPU/BLAS threads, original float32 stored features and float64 computation conventions. No training or other task-owned benchmark runs concurrently. Log hardware, package versions, CPU load, code hashes, commit and uncommitted diff. Use three warmed repetitions and deterministic randomized interleaving of methods within each query/repetition. Preserve all timings and report medians. If external load is substantial, report it and defer that timing block rather than silently discarding results.
++
++Formal evaluation, only for paths meeting their feasibility gate: all four existing test sets (200 queries each), existing same-source audits where available (200 each), M=32/64/128/256/512, sampling seeds 0..4. Retain Uniform, Exact sum, current Projected strata, and official DEANN original/E/T frozen curves. Report duplicate configurations only once with aliases recorded. Keep exact annular as the fixed statistical reference. For A's scale gate, reuse the existing nested GIST reference sets and 100 previously used audit queries at M=64/128/256; identify this smaller grid explicitly.
++
++Paired inference resamples queries (1000 resamples, seed 20260920), after averaging sampling seeds within query. Report pointwise 95% intervals and their unadjusted status. Keep nominal M, unique sampled IDs, actual kernel calls, original-space distance/dot counts, low-dimensional score counts and ANN visits separate. All online phases count toward latency.
++
++## End-to-end comparisons
++
++Prespecified relative-error targets: 5%, 10%, 15%, 20%. For each method and dataset, choose the fastest measured budget point that actually meets each target; otherwise report `unattained`. Do not interpolate or extrapolate. Evaluate error under complete-query time caps 0.125, 0.25, 0.5, 1, 2 and 4 ms, choosing the lowest-error measured eligible point and reporting unattained caps. All frozen official DEANN curves are eligible. These are descriptive measured envelopes; query-level uncertainty is reported separately.
++
++## Merge rules
++
++A: merge an equivalent implementation only if formal measurements confirm >=20% complete-query median reduction over current Projected strata at two adjacent budgets in a prespecified dataset/scale, with no correctness change. Report regressions elsewhere. Local-function speed alone fails.
++
++B: a method enhancement requires formal confirmation of the ANN-H statistical increment plus end-to-end value: >=10% lower error at two adjacent prespecified time caps, or >=10% lower latency at two adjacent error targets, in at least one dataset relative to the best eligible existing method. Preserve other datasets and negative outcomes. Do not select a weaker DEANN anchor to make this pass.
++
++C: both conditions hold; integrate only the supported increment.
++
++D: neither holds; retain the frozen submission candidate and deliver the negative results. Correct any discovered technical error regardless of merge outcome. No third route or iterative rescue study.
++
++Deliver UPGRADE_FEASIBILITY.md, UPGRADE_RESULTS.md and MERGE_DECISION.md with reproducible code, raw rows and provenance. Until required results exist, mark those conclusions pending rather than passing them.
+diff --git a/mech_annulus_project_clean/revision/test_upgrade_ann.py b/mech_annulus_project_clean/revision/test_upgrade_ann.py
+new file mode 100644
+index 0000000..8fec2f5
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/test_upgrade_ann.py
+@@ -0,0 +1,53 @@
++"""Independent finite-population checks for controlled ANN-H estimators."""
++import json
++import numpy as np
++from scipy.spatial.distance import cdist
++from upgrade_ann import ANNControlledEvaluator, unique_neighbors, conditional_variance
++from sprint_projection import ProjectionScore
++
++
++class FixedANN:
++    def __init__(self,points,ids):self.points=points;self.ids=np.array(ids,dtype=np.int64)
++    def set_query_arguments(self,nprobe):self.nprobe=nprobe
++    def query(self,q,k):
++        ids=self.ids[:k];valid=ids>=0
++        d=np.full(len(ids),np.inf)
++        d[valid]=np.sqrt(cdist(q[None,:],self.points[ids[valid]],'sqeuclidean')[0])
++        self.last=dict(ann_distance_evaluations=17,neighbors_returned=int(valid.sum()))
++        return d,ids,np.array([17+valid.sum()])
++
++
++def run():
++    rng=np.random.default_rng(20260920)
++    points=rng.normal(size=(39,7)).astype(np.float32)
++    q=rng.normal(size=7).astype(np.float32);h=2.
++    projection=ProjectionScore(points,points[:20])
++    ann=FixedANN(points,[3,7,7,-1,18,23,2,13])
++    ev=ANNControlledEvaluator(points,h,projection,ann)
++    values=np.exp(-cdist(q.astype(float)[None,:],points.astype(float),'sqeuclidean')[0]/(2*h*h))
++    truth=values.mean();report={}
++    for mode in ['single','multi']:
++        estimates=[]
++        for seed in range(4096):
++            row=ev.evaluate(q,24,np.random.default_rng(seed),.25,2,mode,keep_ids=True)
++            H,cells,alloc=ev.last_partition
++            combined=np.concatenate([H]+cells)
++            assert sorted(combined)==list(range(len(points)))
++            assert row['H_ids']==[3,7,18,23]
++            assert row['ann_duplicate_returned']==1 and row['ann_invalid_returned']==1
++            assert row['actual_samples']==row['kernel_evaluations']==24
++            assert len(set(row['selected_ids']))==24
++            assert row['original_remainder_distance_evaluations']==20
++            assert row['full_dimension_query_reference_distances']==17+5+20
++            estimates.append(np.exp(row['log_estimate']))
++        var=conditional_variance(values,len(points),cells,24-len(H))
++        error=abs(np.mean(estimates)-truth)
++        assert error<5*np.sqrt(var/len(estimates))
++        report[mode]=dict(mean=float(np.mean(estimates)),truth=float(truth),
++            analytical_variance=float(var),empirical_variance=float(np.var(estimates)),
++            absolute_mean_error=float(error),repetitions=len(estimates),actual_H=len(H),
++            actual_kernel_evaluations=24)
++    report['scope']='Synthetic correctness; ANN outputs intentionally include duplicates and missing IDs'
++    print(json.dumps(report,indent=2))
++
++if __name__=='__main__':run()
+diff --git a/mech_annulus_project_clean/revision/test_upgrade_partition.py b/mech_annulus_project_clean/revision/test_upgrade_partition.py
+new file mode 100644
+index 0000000..4c54f69
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/test_upgrade_partition.py
+@@ -0,0 +1,86 @@
++"""Membership, ID-coupling and exact finite-population distribution checks."""
++import itertools
++import json
++import math
++from pathlib import Path
++import numpy as np
++from upgrade_partition import split_scores, profile_original
++from sprint_estimator import allocate_counts, estimate_strata
++
++
++def canonical(H, cells):
++    return tuple(sorted(H)), tuple(tuple(sorted(c)) for c in cells)
++
++
++def check_case(scores, ids, k, J, budget, rng):
++    oldH, old, _ = profile_original(scores, ids, k, J)
++    newH, new, detail = split_scores(scores, ids, k, J)
++    assert canonical(oldH, old) == canonical(newH, new)
++    assert len(np.unique(np.concatenate([newH]+new))) == len(ids)
++    if new and budget-k >= len(new):
++        alloc = allocate_counts(list(map(len, old)), budget-k)
++        assert np.array_equal(alloc, allocate_counts(list(map(len, new)), budget-k))
++        priority = rng.random(int(max(ids))+1)
++        # IID continuous priorities indexed by population ID couple exactly the
++        # same uniform fixed-size samples, independent of internal cell order.
++        a = [np.sort(c[np.argsort(priority[c])[:m]]) for c,m in zip(old,alloc)]
++        b = [np.sort(c[np.argsort(priority[c])[:m]]) for c,m in zip(new,alloc)]
++        assert all(np.array_equal(x,y) for x,y in zip(a,b))
++    return detail['partition_tie_fallback']
++
++
++def run():
++    rng=np.random.default_rng(20260920)
++    cases=fallbacks=0
++    for n in [1,2,7,9,31,32,63,65,127,128,720,1800,20000]:
++        ids=rng.permutation(n)
++        for mode in ['continuous','quantized','equal','monotone']:
++            scores=(rng.normal(size=n) if mode=='continuous' else
++                    rng.integers(0,7,size=n).astype(float) if mode=='quantized' else
++                    np.ones(n) if mode=='equal' else np.arange(n,dtype=float))
++            for budget in [32,64,128,256,512]:
++                k=min(budget//4,n,max(0,budget-1))
++                for J in [1,4,8]:
++                    fallbacks+=check_case(scores,ids,k,J,budget,rng);cases+=1
++    # Every possible equal-size sample combination under both layouts yields
++    # the same estimate multiset, hence exactly the same distribution.
++    n=13;k=1;J=3;budget=7
++    scores=rng.normal(size=n);ids=rng.permutation(n)
++    H,a,_=profile_original(scores,ids,k,J)
++    H2,b,_=split_scores(scores,ids,k,J)
++    values=np.exp(-np.linspace(0,5,n))
++    counts=allocate_counts(list(map(len,a)),budget-k)
++    def support(cells):
++        result=[]
++        choices=[list(itertools.combinations(c,int(m))) for c,m in zip(cells,counts)]
++        for selection in itertools.product(*choices):
++            v=(sum(values[H])+sum(len(c)/m*sum(values[list(s)])
++                for c,m,s in zip(cells,counts,selection)))/n
++            result.append(v)
++        return np.sort(result)
++    x=support(a);y=support(b)
++    assert np.allclose(x,y,rtol=0,atol=1e-15)
++    expected=values.mean()
++    variance=sum(len(c)**2/m*(1-m/len(c))*np.var(values[c],ddof=1)
++                 for c,m in zip(a,counts))/n**2
++    assert abs(x.mean()-expected)<1e-14
++    assert abs(x.var()-variance)<1e-14
++    # Exercise the unchanged production sampling/weighting code as well.
++    draws=[]
++    for seed in range(4096):
++        row=estimate_strata(n,H2,b,budget,np.random.default_rng(seed),
++                            lambda selected:np.log(values[selected]),validate=True)
++        assert row['actual_samples']==budget
++        assert len(np.unique(row['selected_ids']))==budget
++        draws.append(np.exp(row['log_estimate']))
++    se=math.sqrt(variance/len(draws))
++    assert abs(np.mean(draws)-expected)<5*se
++    report=dict(membership_cases=cases,tie_fallback_cases=fallbacks,
++        exact_distribution_support_size=len(x),true_mean=expected,
++        enumerated_mean=float(x.mean()),analytical_variance=variance,
++        enumerated_variance=float(x.var()),production_repetitions=len(draws),
++        production_mean=float(np.mean(draws)),production_variance=float(np.var(draws)),
++        scope='Synthetic correctness only; no real-data error or timing claim')
++    print(json.dumps(report,indent=2))
++
++if __name__=='__main__':run()
+diff --git a/mech_annulus_project_clean/revision/test_upgrade_pipeline.py b/mech_annulus_project_clean/revision/test_upgrade_pipeline.py
+new file mode 100644
+index 0000000..a0e76a1
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/test_upgrade_pipeline.py
+@@ -0,0 +1,102 @@
++"""Synthetic plumbing test. Temporary fake-ANN rows are never experiment data.
++
++Real projection/sampling/profile and analysis bodies run with a lightweight ANN
++double. This cannot validate FAISS/DEANN performance or substitute for the server.
++"""
++import ast
++import contextlib
++import copy
++import hashlib
++import io
++import json
++import math
++import os
++from pathlib import Path
++import sys
++import tempfile
++import time
++import types
++import numpy as np
++import pandas as pd
++from scipy.spatial.distance import cdist
++from scipy.special import logsumexp
++
++
++def main():
++    folder=Path(__file__).parent
++    # Import actual core function/class AST bodies without unused MECH/sklearn
++    # imports. The dataset loader is explicitly replaced by a synthetic fixture.
++    tree=ast.parse((folder/'core.py').read_text())
++    body=[node for node in tree.body if isinstance(node,(ast.FunctionDef,ast.ClassDef))]
++    core=types.ModuleType('core')
++    core.__dict__.update(np=np,math=math,time=time,cdist=cdist,logsumexp=logsumexp)
++    exec(compile(ast.Module(body=body,type_ignores=[]),'core.py','exec'),core.__dict__)
++    sys.modules['core']=core
++    fake_run=types.ModuleType('run');sys.modules['run']=fake_run
++    common=types.ModuleType('sprint_common');sys.modules['sprint_common']=common
++    scores=types.ModuleType('sprint_scores');scores.ScoreModel=None;scores.quantile_groups=None
++    sys.modules['sprint_scores']=scores
++    common.ROOT=Path('.');common.DATASETS=['synthetic_fixture']
++    common.load_data=lambda *args:None
++    common.save_json=lambda path,value:Path(path).write_text(json.dumps(value,default=lambda x:x.tolist() if isinstance(x,np.ndarray) else x.item()))
++    adapter=types.ModuleType('deann_adapter');sys.modules['deann_adapter']=adapter
++    adapter.faiss=types.SimpleNamespace(clone_index=lambda index:index)
++
++    from sprint_projection import ProjectionScore
++    from sprint_evaluator import SprintEvaluator
++    from upgrade_evaluator import EquivalentPartitionEvaluator
++    from upgrade_ann import ANNControlledEvaluator
++
++    class ANNDouble:
++        def __init__(self,points):self.points=points;self.index=self
++        def set_query_arguments(self,nprobe):self.nprobe=nprobe
++        def query(self,q,k):
++            # Mock retrieval is exact here solely to exercise API contracts.
++            d2=cdist(np.asarray(q)[None,:],self.points,'sqeuclidean')[0]
++            ids=np.argsort(d2)[:k]
++            self.last=dict(ann_distance_evaluations=len(self.points),neighbors_returned=len(ids))
++            return np.sqrt(d2[ids]),ids,np.array([len(self.points)+len(ids)])
++    adapter.build=lambda points:(ANNDouble(points),{'scope':'synthetic_ANN_double'})
++    def make(points,h,ann,M,fraction,nprobe,seed):
++        ev=ANNControlledEvaluator(points,h,None,ann)
++        return (types.SimpleNamespace(ev=ev,rng=np.random.default_rng(seed),fraction=fraction,nprobe=nprobe),int(M*fraction),M-int(M*fraction),0.)
++    adapter.make_estimator=make
++    adapter.evaluate=lambda est,ann,q,k,m:est.ev.evaluate(q,k+m,est.rng,est.fraction,est.nprobe,'single')
++
++    import upgrade_run as runner
++    from upgrade_analyze import analyze
++    rng=np.random.default_rng(98765)
++    points=rng.normal(size=(720,11)).astype(np.float32)
++    queries=rng.normal(size=(2,11)).astype(np.float32)
++    projection=ProjectionScore(points,points[:80])
++    current=SprintEvaluator.__new__(SprintEvaluator)
++    current.points=points.astype(float);current.n=len(points);current.h=2.
++    current.old=types.SimpleNamespace(radius=4.)
++    current.id_array=np.arange(len(points));current.projection=projection
++    fast=EquivalentPartitionEvaluator.__new__(EquivalentPartitionEvaluator)
++    fast.__dict__=current.__dict__.copy()
++    runner.environment=lambda:{'scope':'synthetic_pipeline_fixture'}
++    runner.load_data=lambda name,phase:{'name':name}
++    runner.construct=lambda *args:(current,fast,queries,np.arange(2))
++    runner.anchors=lambda *args:{'E':dict(nprobe=2,near_fraction=.5,aliases=['E']),
++                                  'T':dict(nprobe=1,near_fraction=.125,aliases=['T'])}
++    for key in ['OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS']:os.environ[key]='8'
++    with tempfile.TemporaryDirectory(prefix='icassp_synthetic_plumbing_') as temp:
++        root=Path(temp)
++        args=types.SimpleNamespace(phase='validation',out=root/'run',prior=root,scale=None,smoke=False)
++        with contextlib.redirect_stdout(io.StringIO()):runner.run(args)
++        raw=pd.read_json(root/'run/synthetic_fixture/raw_queries.jsonl',lines=True)
++        assert len(raw)==3*5*2*3*11
++        assert raw[['relative_error','time_ns','kernel_evaluations','full_dimension_distance_or_dot_evaluations']].notna().all().all()
++        assert all(raw[raw.method!='exact'].actual_samples==raw[raw.method!='exact'].budget)
++        with contextlib.redirect_stdout(io.StringIO()):analyze([root/'run'],root/'analysis')
++        summary=pd.read_csv(root/'analysis/summary.csv')
++        pairs=pd.read_csv(root/'analysis/ann_H_paired_bootstrap.csv')
++        assert len(summary)==33 and len(pairs)==6
++        assert set(pairs.queries)=={2}
++        report=dict(raw_rows=len(raw),methods=11,budgets=3,sampling_seeds=5,
++            timed_repetitions=3,summary_rows=len(summary),matched_H_comparisons=len(pairs),
++            all_passed=True,scope='Synthetic pipeline plumbing with ANN double; temporary rows destroyed; no real experiment claim')
++        print(json.dumps(report,indent=2))
++
++if __name__=='__main__':main()
+diff --git a/mech_annulus_project_clean/revision/test_upgrade_query_integration.py b/mech_annulus_project_clean/revision/test_upgrade_query_integration.py
+new file mode 100644
+index 0000000..f9911fc
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/test_upgrade_query_integration.py
+@@ -0,0 +1,59 @@
++"""Run the original evaluator bodies without unrelated MECH training imports.
++
++Only constructor dependencies for the unused norm-angle route are stubbed.
++Both evaluator methods and the production sampler are imported unchanged.
++"""
++import json
++import sys
++import types
++from pathlib import Path
++import numpy as np
++from scipy.spatial.distance import cdist
++
++core=types.ModuleType('core')
++core.sqdist=lambda points,q:cdist(np.asarray(q,dtype=float)[None,:],points,'sqeuclidean')[0]
++sys.modules['core']=core
++common=types.ModuleType('sprint_common');common.ROOT=Path('.')
++sys.modules['sprint_common']=common
++scores=types.ModuleType('sprint_scores');scores.ScoreModel=None;scores.quantile_groups=None
++sys.modules['sprint_scores']=scores
++
++from sprint_evaluator import SprintEvaluator
++from sprint_projection import ProjectionScore
++from upgrade_evaluator import EquivalentPartitionEvaluator
++from upgrade_profile import profile_current
++
++
++def run():
++    rng=np.random.default_rng(20260920)
++    points=rng.normal(size=(720,37)).astype(np.float32)
++    projection=ProjectionScore(points,points[:200])
++    current=SprintEvaluator.__new__(SprintEvaluator)
++    current.points=points.astype(float);current.n=len(points);current.h=2.
++    current.id_array=np.arange(len(points),dtype=np.int64);current.projection=projection
++    fast=EquivalentPartitionEvaluator.__new__(EquivalentPartitionEvaluator)
++    fast.__dict__=current.__dict__.copy()
++    cfg=dict(score='projection64',grouping='quantile',full_target=True,
++             H_fraction=.25,J=8,allocation='proportional')
++    checked=0
++    for q in rng.normal(size=(10,37)).astype(np.float32):
++        for M in [32,64,128,256,512]:
++            a=current.prepare(q,M,cfg);b=fast.prepare(q,M,cfg)
++            assert np.array_equal(np.sort(a['H']),np.sort(b['H']))
++            assert all(np.array_equal(np.sort(x),np.sort(y)) for x,y in zip(a['cells'],b['cells']))
++            for ev in [current,fast]:
++                row=ev.evaluate(q,M,np.random.default_rng(9),cfg,keep_ids=True)
++                assert row['actual_samples']==row['kernel_evaluations']==M
++                assert row['full_dimension_distance_or_dot_evaluations']==M+64
++                assert len(set(row['selected_ids']))==M
++                assert np.isfinite(row['log_estimate']) and row['unassigned_ns']>=0
++                assert row['H_count']==M//4
++            measured=profile_current(current,q,M,np.random.default_rng(9))
++            reference=current.evaluate(q,M,np.random.default_rng(9),cfg)
++            assert measured['log_estimate']==reference['log_estimate']
++            assert measured['selected_original_vector_copy_count']==M
++            checked+=1
++    print(json.dumps(dict(full_query_integration_cases=checked,all_passed=True,
++        scope='Production projection/evaluator/sampler bodies; synthetic points; no performance claim'),indent=2))
++
++if __name__=='__main__':run()
+diff --git a/mech_annulus_project_clean/revision/upgrade_analyze.py b/mech_annulus_project_clean/revision/upgrade_analyze.py
+new file mode 100644
+index 0000000..f999076
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_analyze.py
+@@ -0,0 +1,127 @@
++"""Query-cluster inference and prespecified decision tables; no tuning."""
++import argparse
++import json
++from pathlib import Path
++import numpy as np
++import pandas as pd
++
++
++def paired_gain(a,b,kind='mean',resamples=1000):
++    """Positive means b improves on a; query rows are the resampling unit."""
++    a=np.asarray(a,float);b=np.asarray(b,float)
++    assert a.shape==b.shape and len(a)>1
++    rng=np.random.default_rng(20260920)
++    ix=rng.integers(0,len(a),size=(resamples,len(a)))
++    agg=np.mean if kind=='mean' else np.median
++    value=1-agg(b)/agg(a)
++    axes=tuple(range(1,a.ndim+1))
++    distribution=1-agg(b[ix],axis=axes)/agg(a[ix],axis=axes)
++    lo,hi=np.quantile(distribution,[.025,.975])
++    return dict(relative_reduction=float(value),ci_low=float(lo),ci_high=float(hi),queries=len(a))
++
++
++def adjacent(budgets):
++    budgets=set(budgets)
++    return any(a in budgets and b in budgets for a,b in [(32,64),(64,128),(128,256),(256,512)])
++
++
++def analyze(inputs,out):
++    out.mkdir(parents=True,exist_ok=False)
++    summaries=[];ann_gains=[];speed_gains=[];variance=[];profiles=[]
++    for root in inputs:
++        if not (root/'DONE.json').exists():raise RuntimeError('Incomplete run: '+str(root))
++        done=json.loads((root/'DONE.json').read_text())
++        if done.get('scope')=='smoke only':raise RuntimeError('Smoke cannot make a scientific decision')
++        for folder in root.iterdir():
++            if not folder.is_dir() or not (folder/'raw_queries.jsonl').exists():continue
++            offline=json.loads((folder/'OFFLINE.json').read_text())
++            df=pd.read_json(folder/'raw_queries.jsonl',lines=True)
++            if set(df.seed.unique())!={0,1,2,3,4}:raise RuntimeError('Missing sampling seeds')
++            if set(df.repeat.unique())!={0,1,2}:raise RuntimeError('Missing timing repetitions')
++            prefix=dict(dataset=folder.name,phase=offline['phase'],n=offline['n'])
++            ids=['method','budget','query_id','seed']
++            # Repetition zero supplies estimates; all three repetitions supply
++            # median latency. The official stateful sampler may change by rep.
++            stats=df[df.repeat==0].set_index(ids)
++            stats['median_time_ns']=df.groupby(ids).time_ns.median()
++            stats=stats.reset_index()
++            for (method,M),z in stats.groupby(['method','budget']):
++                q=z.groupby('query_id').relative_error.mean()
++                summaries.append(dict(**prefix,method=method,budget=M,
++                    mean_relative_error=q.mean(),median_error=q.median(),p90_error=q.quantile(.9),
++                    se_query_cluster=q.std(ddof=1)/np.sqrt(len(q)),
++                    median_latency_ms=z.median_time_ns.median()/1e6,queries=len(q),
++                    actual_kernel_evaluations=z.kernel_evaluations.mean(),
++                    actual_samples=z.actual_samples.mean()))
++            for M,z in stats.groupby('budget'):
++                eq=z.groupby(['query_id','method']).relative_error.mean().unstack()
++                tq=z.pivot(index=['query_id','seed'],columns='method',values='median_time_ns').sort_index()
++                if 'projected_fast' in tq:
++                    speed_gains.append(dict(**prefix,budget=M,
++                        **paired_gain(tq.projected_current.to_numpy().reshape(-1,5),
++                                      tq.projected_fast.to_numpy().reshape(-1,5),kind='median')))
++                for column in eq:
++                    if column.startswith('ann_') and column.endswith('_single'):
++                        other=column.replace('_single','_multi')
++                        if other in eq:
++                            ann_gains.append(dict(**prefix,budget=M,anchor=column.split('_')[1],
++                                single_error=eq[column].mean(),multi_error=eq[other].mean(),
++                                **paired_gain(eq[column],eq[other])))
++            file=folder/'ann_variance.jsonl'
++            if file.stat().st_size:
++                vd=pd.read_json(file,lines=True)
++                for (anchor,M),z in vd.groupby(['anchor','budget']):
++                    variance.append(dict(**prefix,anchor=anchor,budget=M,
++                        median_variance_ratio=z.variance_ratio.median(),
++                        mean_variance_ratio=z.variance_ratio.mean(),
++                        queries=len(z)))
++            pdg=pd.read_json(folder/'current_profile.jsonl',lines=True)
++            profiles.append(dict(**prefix,**{k:pdg[k].mean()/1e6 for k in pdg if k.endswith('_ns')}))
++    S=pd.DataFrame(summaries);A=pd.DataFrame(speed_gains);B=pd.DataFrame(ann_gains);V=pd.DataFrame(variance)
++    S.to_csv(out/'summary.csv',index=False);A.to_csv(out/'path_a_timing_bootstrap.csv',index=False)
++    B.to_csv(out/'ann_H_paired_bootstrap.csv',index=False);V.to_csv(out/'ann_H_variance.csv',index=False)
++    pd.DataFrame(profiles).rename(columns=lambda s:s.replace('_ns','_mean_ms')).to_csv(out/'current_profile_mean_ms.csv',index=False)
++    targets=[];caps=[]
++    for keys,z in S.groupby(['dataset','phase','n']):
++        prefix=dict(zip(['dataset','phase','n'],keys))
++        for method,curve in z.groupby('method'):
++            if method=='exact':
++                # One exact algorithm; avoid choosing its fastest repeated M.
++                curve=pd.DataFrame([dict(method=method,budget=0,mean_relative_error=0.,
++                    median_latency_ms=curve.median_latency_ms.median())])
++            for target in [.05,.10,.15,.20]:
++                eligible=curve[curve.mean_relative_error<=target]
++                chosen=eligible.sort_values('median_latency_ms').iloc[0] if len(eligible) else None
++                targets.append(dict(**prefix,method=method,error_target=target,
++                    attained=chosen is not None,budget=int(chosen.budget) if chosen is not None else None,
++                    latency_ms=float(chosen.median_latency_ms) if chosen is not None else None))
++            for cap in [.125,.25,.5,1.,2.,4.]:
++                eligible=curve[curve.median_latency_ms<=cap]
++                chosen=eligible.sort_values('mean_relative_error').iloc[0] if len(eligible) else None
++                caps.append(dict(**prefix,method=method,time_cap_ms=cap,
++                    attained=chosen is not None,budget=int(chosen.budget) if chosen is not None else None,
++                    error=float(chosen.mean_relative_error) if chosen is not None else None))
++    pd.DataFrame(targets).to_csv(out/'fixed_error_latency.csv',index=False)
++    pd.DataFrame(caps).to_csv(out/'fixed_time_error.csv',index=False)
++    gate=dict(path_a=False,path_b=False,scope='validation feasibility only',qualified_a=[],qualified_b=[])
++    if len(A):
++        for keys,z in A[A.phase=='validation'].groupby(['dataset','n']):
++            good=z[z.relative_reduction>=.20]
++            if adjacent(good.budget):
++                gate['path_a']=True;gate['qualified_a'].append(dict(dataset=keys[0],n=int(keys[1]),budgets=good.budget.tolist()))
++    if len(B):
++        joined=B.merge(V,on=['dataset','phase','n','anchor','budget'],validate='one_to_one',suffixes=('','_variance'))
++        for keys,z in joined[joined.phase=='validation'].groupby(['dataset','n','anchor']):
++            good=z[(z.relative_reduction>=.10)&(z.ci_low>0)&(z.median_variance_ratio<=.90)]
++            if adjacent(good.budget):
++                gate['path_b']=True;gate['qualified_b'].append(dict(dataset=keys[0],n=int(keys[1]),anchor=keys[2],budgets=good.budget.tolist()))
++    if not (S.phase=='validation').any():
++        gate=dict(path_a=None,path_b=None,scope='Not applicable: inputs contain formal sets only; use MERGE_GATE.json',
++                  qualified_a=[],qualified_b=[])
++    (out/'VALIDATION_GATE.json').write_text(json.dumps(gate,indent=2))
++    print(json.dumps(gate,indent=2))
++
++
++if __name__=='__main__':
++    p=argparse.ArgumentParser();p.add_argument('--input',type=Path,nargs='+',required=True);p.add_argument('--out',type=Path,required=True)
++    args=p.parse_args();analyze(args.input,args.out)
+diff --git a/mech_annulus_project_clean/revision/upgrade_ann.py b/mech_annulus_project_clean/revision/upgrade_ann.py
+new file mode 100644
+index 0000000..680c767
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_ann.py
+@@ -0,0 +1,134 @@
++"""Controlled ANN-H estimators; neither control is named official DEANN.
++
++Official DEANN remains an independent baseline. These controls use uniform
++without-replacement draws from the exact complement of the same unique ANN H.
++"""
++import time
++import numpy as np
++from scipy.spatial.distance import cdist
++from sprint_estimator import estimate_strata, allocate_counts
++from upgrade_partition import split_scores
++
++
++def unique_neighbors(distances, ids, n):
++    ids = np.asarray(ids, dtype=np.int64).reshape(-1)
++    distances = np.asarray(distances, dtype=np.float64).reshape(-1)
++    if ids.shape != distances.shape:
++        raise ValueError('Mismatched ANN output shapes')
++    valid = (ids >= 0) & (ids < n)
++    if np.any(~np.isfinite(distances[valid])) or np.any(distances[valid] < 0):
++        raise ValueError('Valid ANN IDs must have finite nonnegative distances')
++    H, first = np.unique(ids[valid], return_index=True)
++    return H, distances[valid][first], dict(
++        ann_valid_returned=int(valid.sum()), ann_invalid_returned=int((~valid).sum()),
++        ann_duplicate_returned=int(valid.sum()-len(H)))
++
++
++class ANNControlledEvaluator:
++    def __init__(self, points, h, projection, ann):
++        self.points = np.ascontiguousarray(points, dtype=np.float64)
++        self.n = len(points)
++        self.h = float(h)
++        self.projection = projection
++        self.ann = ann
++        self.ids = np.arange(self.n, dtype=np.int64)
++        self.last_partition = None
++
++    def prepare(self, q, budget, fraction, nprobe, mode):
++        if mode not in ('single', 'multi'):
++            raise ValueError(mode)
++        start = time.perf_counter_ns()
++        # Charge query-time changes of the shared ANN object's arguments.
++        self.ann.set_query_arguments(nprobe)
++        requested = min(self.n, max(1, int(budget*fraction)))
++        distances, ids, counter = self.ann.query(np.asarray(q,dtype=np.float64), requested)
++        ann_ns = time.perf_counter_ns()-start
++        ann_stats = dict(self.ann.last)
++        t = time.perf_counter_ns()
++        H, exact_distances, counters = unique_neighbors(distances, ids, self.n)
++        if len(H) >= min(budget,self.n) and len(H)<self.n:
++            raise ValueError('ANN H leaves no residual sampling budget')
++        dedup_ns = time.perf_counter_ns()-t
++        t = time.perf_counter_ns()
++        mask = np.ones(self.n,dtype=bool)
++        mask[H] = False
++        remainder = self.ids[mask]
++        complement_ns = time.perf_counter_ns()-t
++        phases = dict(ann_retrieval_ns=ann_ns, ann_dedup_ns=dedup_ns,
++                      complement_build_ns=complement_ns,
++                      projection_ns=0, low_dim_score_ns=0,
++                      complement_score_gather_ns=0, sorting_and_strata_ns=0)
++        detail={}
++        if mode=='multi' and len(remainder):
++            if self.projection is None:
++                raise RuntimeError('Build fixed projection offline')
++            z=self.projection.query(q)
++            phases['projection_ns']=z['projection_ns']
++            phases['low_dim_score_ns']=z['low_dim_score_ns']
++            t=time.perf_counter_ns()
++            scores=z['d2hat'][remainder]
++            phases['complement_score_gather_ns']=time.perf_counter_ns()-t
++            _,cells,detail=split_scores(scores,remainder,0,8)
++            phases['sorting_and_strata_ns']=detail['partition_total_ns']
++        else:
++            cells=[remainder] if len(remainder) else []
++        counters.update(ann_distance_evaluations=int(ann_stats['ann_distance_evaluations']),
++            ann_recomputed_original_distances=int(ann_stats['neighbors_returned']),
++            ann_reported_counter=int(np.asarray(counter).reshape(-1)[0]),
++            requested_neighbors=requested, actual_H_count=len(H),
++            low_dim_score_evaluations=self.n if mode=='multi' else 0,
++            full_dimension_projection_inner_products=64 if mode=='multi' else 0,
++            complement_id_scan_count=self.n, **detail)
++        return H,cells,exact_distances,phases,counters
++
++    def evaluate(self,q,budget,rng,fraction,nprobe,mode,keep_ids=False):
++        start=time.perf_counter_ns()
++        H,cells,dH,phases,counters=self.prepare(q,budget,fraction,nprobe,mode)
++        called=[]
++        original_remainder_evaluations=0
++        def kernel_fn(ids):
++            nonlocal original_remainder_evaluations
++            if called or not np.array_equal(ids[:len(H)],H):
++                raise RuntimeError('Expected one proportional call with exact H first')
++            called.append(len(ids))
++            remainder_ids=ids[len(H):]
++            original_remainder_evaluations=len(remainder_ids)
++            # ANN wrapper already paid for d-dimensional distances to H. Reuse
++            # only those per-query distances; no offline truth enters this path.
++            d2=cdist(np.asarray(q,dtype=np.float64)[None,:],
++                     self.points[remainder_ids],metric='sqeuclidean')[0]
++            return -np.r_[dH*dH,d2]/(2*self.h*self.h)
++        estimate=estimate_strata(self.n,H,cells,budget,rng,kernel_fn,
++                                 allocation='proportional')
++        phases.update({key:int(estimate[key]) for key in
++            ['sampling_ns','allocation_ns','kernel_ns','aggregation_ns']})
++        total=time.perf_counter_ns()-start
++        if sum(called)!=estimate['actual_samples'] or sum(called)>budget:
++            raise RuntimeError('Kernel budget mismatch')
++        distances=(counters['ann_distance_evaluations']+
++                   counters['ann_recomputed_original_distances']+
++                   original_remainder_evaluations)
++        result=dict(log_estimate=estimate['log_estimate'],time_ns=total,
++            actual_samples=estimate['actual_samples'],kernel_evaluations=sum(called),
++            full_dimension_query_reference_distances=distances,
++            full_dimension_distance_or_dot_evaluations=distances+
++                counters['full_dimension_projection_inner_products'],
++            H_count=len(H),candidate_size=len(H),residual_size=self.n-len(H),
++            original_remainder_distance_evaluations=original_remainder_evaluations,
++            layer_sizes=estimate['cell_sizes'].tolist(),allocation=estimate['main_counts'].tolist(),
++            effective_allocation=estimate['effective_allocation'],
++            nonempty_layers=len(cells),**phases,**counters)
++        result['unassigned_ns']=total-sum(phases.values())
++        if result['unassigned_ns']<0:
++            raise RuntimeError('Overlapping phases')
++        self.last_partition=(H,cells,estimate['main_counts'])
++        if keep_ids:
++            result.update(H_ids=H.tolist(),selected_ids=estimate['selected_ids'].tolist())
++        return result
++
++
++def conditional_variance(values,n,cells,budget):
++    """Offline diagnostic only; never called by either online estimator."""
++    counts=allocate_counts([len(x) for x in cells],budget)
++    return sum(len(c)**2/m*(1-m/len(c))*float(np.var(values[c],ddof=1))
++        for c,m in zip(cells,counts) if len(c)>1)/n**2
+diff --git a/mech_annulus_project_clean/revision/upgrade_cached_membership.py b/mech_annulus_project_clean/revision/upgrade_cached_membership.py
+new file mode 100644
+index 0000000..10f8c51
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_cached_membership.py
+@@ -0,0 +1,54 @@
++"""Check Path A membership on existing validation score caches only.
++
++This is not a new dataset run and supplies no complete-query performance claim.
++"""
++import csv
++import json
++from pathlib import Path
++import numpy as np
++from upgrade_partition import split_scores, profile_original
++from sprint_estimator import allocate_counts
++
++
++def main(root,out):
++    rng=np.random.default_rng(20260920)
++    rows=[]
++    for dataset in ['isolet','cifar10','cifar10_gist512','amazon']:
++        with np.load(root/(dataset+'_cache.npz')) as data:
++            for query in range(80):
++                score=data['q%d_projected'%query]
++                values=data['q%d_values'%query]
++                ids=np.arange(len(score),dtype=np.int64)
++                priority=rng.random(len(ids))
++                for budget in [32,64,128,256,512]:
++                    k=budget//4
++                    H,a,_=profile_original(score,ids,k,8)
++                    H2,b,meta=split_scores(score,ids,k,8)
++                    assert np.array_equal(np.sort(H),np.sort(H2))
++                    assert len(a)==len(b)
++                    assert all(np.array_equal(np.sort(x),np.sort(y)) for x,y in zip(a,b))
++                    counts=allocate_counts(list(map(len,a)),budget-k)
++                    assert np.array_equal(counts,allocate_counts(list(map(len,b)),budget-k))
++                    def coupled(cells):
++                        selected=[np.sort(c[np.argsort(priority[c])[:m]]) for c,m in zip(cells,counts)]
++                        result=values[np.sort(H)].sum()
++                        result+=sum(len(c)/m*values[s].sum() for c,m,s in zip(cells,counts,selected))
++                        return result/len(ids),selected
++                    x,xids=coupled(a);y,yids=coupled(b)
++                    assert x==y
++                    assert all(np.array_equal(x,y) for x,y in zip(xids,yids))
++                    rows.append(dict(dataset=dataset,query=query,
++                        raw_row_id=int(data['q%d_raw_row_id'%query]),n=len(ids),budget=budget,
++                        H_count=k,all_cell_members_equal=True,allocation_equal=True,
++                        coupled_estimate_equal=True,tie_fallback=meta['partition_tie_fallback']))
++    out.parent.mkdir(parents=True,exist_ok=True)
++    with out.open('w',newline='') as f:
++        writer=csv.DictWriter(f,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
++    print(json.dumps(dict(validation_queries=320,budget_cases=len(rows),
++        all_passed=True,tie_fallbacks=sum(x['tie_fallback'] for x in rows),
++        scope='Frozen validation score cache; no new full-query timing'),indent=2))
++
++if __name__=='__main__':
++    import argparse
++    p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--out',type=Path,required=True)
++    args=p.parse_args();main(args.root,args.out)
+diff --git a/mech_annulus_project_clean/revision/upgrade_evaluator.py b/mech_annulus_project_clean/revision/upgrade_evaluator.py
+new file mode 100644
+index 0000000..2285c96
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_evaluator.py
+@@ -0,0 +1,33 @@
++"""Path A reuses the frozen kernel estimator and only changes construction."""
++import time
++from sprint_evaluator import SprintEvaluator
++from upgrade_partition import split_scores
++
++
++class EquivalentPartitionEvaluator(SprintEvaluator):
++    def prepare(self, q, budget, cfg, control=None):
++        if (cfg['score'] != 'projection64' or cfg['grouping'] != 'quantile'
++                or not cfg['full_target'] or cfg['allocation'] != 'proportional'
++                or control is not None):
++            raise ValueError('Path A supports only the frozen final estimator')
++        if self.projection is None:
++            raise RuntimeError('Build projection offline')
++        start = time.perf_counter_ns()
++        z = self.projection.query(q)
++        k = min(int(budget*cfg['H_fraction']), self.n, max(0, budget-1))
++        H, cells, detail = split_scores(z['d2hat'], self.id_array, k, cfg['J'])
++        stages = dict(projection_ns=z['projection_ns'],
++                      low_dim_score_ns=z['low_dim_score_ns'],
++                      sorting_and_strata_ns=detail['partition_total_ns'],
++                      residual_build_ns=0)
++        # Breakdown values go in metadata, not overlapping additive phases.
++        counts = dict(full_dimension_encoder_inner_products=0,
++            full_dimension_projection_inner_products=64,
++            low_dim_score_evaluations=self.n, low_dim_score_dimension=64,
++            hash_bucket_visits=0, retrieved_posting_ids=0, code_trie_node_visits=0,
++            norm_posting_ids=0, hamming_table_comparisons=0,
++            full_dimension_query_norm_evaluations=0, residual_id_scan_count=0,
++            **detail)
++        return dict(H=H, cells=cells, C=self.id_array, residual_size=0,
++                    stages=stages, counts=counts,
++                    prepare_ns=time.perf_counter_ns()-start)
+diff --git a/mech_annulus_project_clean/revision/upgrade_figures.py b/mech_annulus_project_clean/revision/upgrade_figures.py
+new file mode 100644
+index 0000000..74b3283
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_figures.py
+@@ -0,0 +1,83 @@
++"""Render all frozen curves without selecting favorable budgets or datasets."""
++import argparse
++from pathlib import Path
++import matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from matplotlib.lines import Line2D
++from matplotlib.ticker import LogLocator, FuncFormatter, NullFormatter
++import pandas as pd
++
++
++LABELS = {'exact': 'Exact sum', 'uniform_mc': 'Uniform MC',
++    'exact_annular': 'Exact annular', 'projected_current': 'Projected: full sort',
++    'projected_fast': 'Projected: multirank', 'official_O': 'Official DEANN O',
++    'official_E': 'Official DEANN E', 'official_T': 'Official DEANN T',
++    'ann_O_single': 'ANN E=O: Single', 'ann_O_multi': 'ANN E=O: Multi',
++    'ann_E_single': 'ANN E: Single', 'ann_E_multi': 'ANN E: Multi',
++    'ann_T_single': 'ANN T: Single', 'ann_T_multi': 'ANN T: Multi'}
++NAMES = {'isolet':'ISOLET', 'cifar10':'CIFAR-10-Small',
++         'cifar10_gist512':'GIST-512', 'amazon':'Amazon'}
++MARKERS = {32:'o',64:'^',128:'s',256:'D',512:'p'}
++
++
++def run(source, destination):
++    destination.mkdir(parents=True, exist_ok=True)
++    plt.rcParams.update({'font.size': 10, 'pdf.fonttype': 42, 'ps.fonttype': 42})
++    data = pd.read_csv(source / 'summary.csv')
++    for (dataset, phase, n), group in data.groupby(['dataset','phase','n']):
++        fig, ax = plt.subplots(figsize=(10, 5.5))
++        # Reserve explicit space for both legends; constrained_layout accounts
++        # for only the most recently attached legend in this two-legend layout.
++        fig.subplots_adjust(left=.09, right=.71, bottom=.12, top=.90)
++        for index, (method, curve) in enumerate(group.groupby('method', sort=True)):
++            curve = curve.sort_values('budget')
++            if method == 'exact':
++                ax.scatter(curve.median_latency_ms.median(), 0, marker='*', s=100,
++                           c='black', label=LABELS[method])
++                continue
++            style = ':' if method.startswith('official') else '--' if method.endswith('single') else '-'
++            line, = ax.plot(curve.median_latency_ms, 100*curve.mean_relative_error,
++                linestyle=style, color=plt.cm.tab20(index % 20),
++                label=LABELS.get(method,method))
++            for row in curve.itertuples():
++                ax.scatter(row.median_latency_ms,100*row.mean_relative_error,
++                           marker=MARKERS[row.budget],s=28,color=line.get_color())
++        ax.set(xlabel='Complete query median (ms)', ylabel='Mean relative error (%)',
++               title=f'{NAMES[dataset]}: {phase}, n={n:,}')
++        ax.set_xscale('log')
++        ax.xaxis.set_major_locator(LogLocator(base=10, subs=(1, 2, 5)))
++        ax.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f'{value:g}'))
++        ax.xaxis.set_minor_formatter(NullFormatter())
++        ax.grid(alpha=.2)
++        fig.legend(*ax.get_legend_handles_labels(), loc='upper left',
++                   bbox_to_anchor=(.73,.91), frameon=False, fontsize=9)
++        fig.legend(handles=[Line2D([],[],color='black',ls='',marker=MARKERS[m],label=f'M={m}')
++                           for m in sorted(group.budget.unique())],
++                  loc='lower left',bbox_to_anchor=(.73,.10),frameon=False,fontsize=9)
++        stem = destination / f'latency_{phase}_{dataset}_n{n}'
++        fig.savefig(str(stem)+'.pdf')
++        fig.savefig(str(stem)+'.png', dpi=160)
++        plt.close(fig)
++    timing = pd.read_csv(source / 'path_a_timing_bootstrap.csv')
++    for (phase,n), g in timing.groupby(['phase','n']):
++        fig,ax=plt.subplots(figsize=(7,4),layout='constrained')
++        for dataset,z in g.groupby('dataset'):
++            z=z.sort_values('budget')
++            ax.errorbar(z.budget,100*z.relative_reduction,
++                yerr=[100*(z.relative_reduction-z.ci_low),100*(z.ci_high-z.relative_reduction)],
++                marker='o',capsize=3,label=NAMES[dataset])
++        ax.axhline(0,color='gray',lw=.8)
++        ax.axhline(20,color='gray',ls='--',lw=.8,label='Predeclared project threshold')
++        ax.set(xlabel='Kernel budget M',ylabel='Full-query time reduction (%)',
++               title=f'Equivalent partition: {phase}, n={n:,}')
++        ax.legend(frameon=False,fontsize=9)
++        ax.grid(alpha=.2)
++        stem=destination/f'partition_speed_{phase}_n{n}'
++        fig.savefig(str(stem)+'.pdf');fig.savefig(str(stem)+'.png',dpi=160)
++        plt.close(fig)
++
++
++if __name__=='__main__':
++    p=argparse.ArgumentParser();p.add_argument('source',type=Path);p.add_argument('destination',type=Path)
++    a=p.parse_args();run(a.source,a.destination)
+diff --git a/mech_annulus_project_clean/revision/upgrade_merge_check.py b/mech_annulus_project_clean/revision/upgrade_merge_check.py
+new file mode 100644
+index 0000000..494c25c
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_merge_check.py
+@@ -0,0 +1,86 @@
++"""Apply the preregistered merge criteria to completed formal summaries."""
++import argparse
++import json
++from pathlib import Path
++import pandas as pd
++from upgrade_analyze import adjacent
++
++
++def run(folder):
++    def read(name, columns):
++        try:
++            return pd.read_csv(folder / name)
++        except pd.errors.EmptyDataError:
++            return pd.DataFrame(columns=columns)
++    A = read('path_a_timing_bootstrap.csv', ['dataset', 'phase', 'n', 'budget', 'relative_reduction'])
++    B = read('ann_H_paired_bootstrap.csv', [])
++    V = read('ann_H_variance.csv', [])
++    output = dict(path_a=False, path_b=False, qualified_a=[],
++                  statistical_b=[], computational_b=[], qualified_b=[])
++    for keys, z in A[A.phase != 'validation'].groupby(['dataset', 'phase', 'n']):
++        good = z[z.relative_reduction >= .20]
++        if adjacent(good.budget):
++            output['path_a'] = True
++            output['qualified_a'].append(dict(dataset=keys[0], phase=keys[1],
++                n=int(keys[2]), budgets=good.budget.tolist()))
++    statkeys = set()
++    if len(B):
++        joined = B.merge(V, on=['dataset', 'phase', 'n', 'anchor', 'budget'],
++                         suffixes=('', '_variance'), validate='one_to_one')
++        for keys, z in joined[joined.phase != 'validation'].groupby(['dataset', 'phase', 'n', 'anchor']):
++            good = z[(z.relative_reduction >= .10) & (z.ci_low > 0) & (z.median_variance_ratio <= .90)]
++            if adjacent(good.budget):
++                statkeys.add(keys)
++                output['statistical_b'].append(dict(dataset=keys[0], phase=keys[1],
++                    n=int(keys[2]), anchor=keys[3], budgets=good.budget.tolist()))
++    # The strongest measured baseline envelope is available at each target.
++    # Include the faster equivalent implementation too when measured; this
++    # prevents attributing Path A's implementation gain to Path B's estimator.
++    rows = []
++    for filename, axis, value, order in [
++        ('fixed_error_latency.csv', 'error_target', 'latency_ms', [.05, .10, .15, .20]),
++        ('fixed_time_error.csv', 'time_cap_ms', 'error', [.125, .25, .5, 1., 2., 4.])]:
++        df = pd.read_csv(folder / filename)
++        for keys, z in df[df.phase != 'validation'].groupby(['dataset', 'phase', 'n']):
++            is_control = z.method.str.startswith('ann_')
++            base = z[~is_control & z.attained]
++            methods = z[z.method.str.startswith('ann_') & z.method.str.endswith('_multi')].method.unique()
++            for method in methods:
++                wins = set()
++                for target in order:
++                    eligible = base[base[axis] == target]
++                    mine = z[(z.method == method) & (z[axis] == target) & z.attained]
++                    baseline = eligible.sort_values(value).iloc[0] if len(eligible) else None
++                    candidate = mine.iloc[0] if len(mine) else None
++                    gain = (1 - candidate[value] / baseline[value]
++                            if baseline is not None and candidate is not None and baseline[value] > 0 else None)
++                    if gain is not None and gain >= .10:
++                        wins.add(target)
++                    rows.append(dict(dataset=keys[0], phase=keys[1], n=int(keys[2]),
++                        method=method, axis=axis, target=target,
++                        baseline_method=baseline.method if baseline is not None else None,
++                        baseline_budget=baseline.budget if baseline is not None else None,
++                        baseline_value=baseline[value] if baseline is not None else None,
++                        candidate_budget=candidate.budget if candidate is not None else None,
++                        candidate_value=candidate[value] if candidate is not None else None,
++                        relative_gain=gain))
++                if any(x in wins and y in wins for x,y in zip(order[:-1],order[1:])):
++                    anchor = method.split('_')[1]
++                    record = dict(dataset=keys[0], phase=keys[1], n=int(keys[2]),
++                                  anchor=anchor, axis=axis, targets=sorted(wins))
++                    output['computational_b'].append(record)
++                    if (*keys, anchor) in statkeys:
++                        output['path_b'] = True
++                        output['qualified_b'].append(record)
++    output['decision'] = ('C' if output['path_a'] and output['path_b'] else
++                          'A' if output['path_a'] else 'B' if output['path_b'] else 'D')
++    output['interpretation'] = 'Project decision criteria, not conference acceptance thresholds'
++    pd.DataFrame(rows).to_csv(folder / 'strongest_envelope_comparison.csv', index=False)
++    (folder / 'MERGE_GATE.json').write_text(json.dumps(output, indent=2))
++    print(json.dumps(output, indent=2))
++
++
++if __name__ == '__main__':
++    p = argparse.ArgumentParser()
++    p.add_argument('folder', type=Path)
++    run(p.parse_args().folder)
+diff --git a/mech_annulus_project_clean/revision/upgrade_pareto.py b/mech_annulus_project_clean/revision/upgrade_pareto.py
+new file mode 100644
+index 0000000..189ca98
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_pareto.py
+@@ -0,0 +1,36 @@
++"""Descriptive dominance of measured points; never a significance test."""
++import argparse
++from pathlib import Path
++import pandas as pd
++
++
++def run(folder):
++    data=pd.read_csv(folder/'summary.csv')
++    rows=[]
++    for keys,g in data.groupby(['dataset','phase','n']):
++        exact=g[g.method=='exact'].iloc[0].copy()
++        exact['budget']=0
++        exact['mean_relative_error']=0.
++        exact['median_latency_ms']=g[g.method=='exact'].median_latency_ms.median()
++        points=pd.concat([g[g.method!='exact'],pd.DataFrame([exact])],ignore_index=True)
++        for _,point in points.iterrows():
++            candidates=points[(points.mean_relative_error<=point.mean_relative_error+1e-12)&
++                              (points.median_latency_ms<=point.median_latency_ms+1e-12)&
++                              ((points.mean_relative_error<point.mean_relative_error-1e-12)|
++                               (points.median_latency_ms<point.median_latency_ms-1e-12))]
++            original=candidates[~candidates.method.str.startswith('ann_')]
++            row=dict(dataset=keys[0],phase=keys[1],n=keys[2],method=point.method,
++                budget=int(point.budget),error=point.mean_relative_error,
++                latency_ms=point.median_latency_ms,dominated_by_any=bool(len(candidates)),
++                dominated_by_existing=bool(len(original)))
++            for label,choices in [('any',candidates),('existing',original)]:
++                best=choices.sort_values('median_latency_ms').iloc[0] if len(choices) else None
++                row[label+'_dominator_method']=best.method if best is not None else None
++                row[label+'_dominator_budget']=int(best.budget) if best is not None else None
++            rows.append(row)
++    pd.DataFrame(rows).to_csv(folder/'nondominance_all_points.csv',index=False)
++
++
++if __name__=='__main__':
++    p=argparse.ArgumentParser();p.add_argument('folder',type=Path)
++    run(p.parse_args().folder)
+diff --git a/mech_annulus_project_clean/revision/upgrade_partition.py b/mech_annulus_project_clean/revision/upgrade_partition.py
+new file mode 100644
+index 0000000..f91fad5
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_partition.py
+@@ -0,0 +1,83 @@
++"""Exact membership-equivalent replacement for full score sorting.
++
++The cells are returned in score-rank order, but IDs inside a cell need not be
++sorted. Uniform sampling without replacement is invariant to this permutation.
++Boundary score ties use the original full (score, ID) ordering as a safe exact
++fallback. This is an implementation change, not a new statistical method.
++"""
++import time
++import numpy as np
++
++
++def split_scores(scores, ids, k, groups=8, algorithm='multiselect'):
++    """Partition finite scores with unique IDs into H and equal-size cells.
++
++    The caller owns input validity. Avoid an extra full validation scan online;
++    the separate correctness suite checks these preconditions and memberships.
++    Sizes match np.array_split(remainder, min(groups, len(remainder))).
++    """
++    begin = time.perf_counter_ns()
++    scores = np.asarray(scores)
++    ids = np.asarray(ids, dtype=np.int64)
++    n = len(ids)
++    if scores.shape != (n,) or not 0 <= k <= n or groups < 1:
++        raise ValueError('Invalid score/ID dimensions, H count or group count')
++    remaining = n - k
++    number = min(groups, remaining)
++    if number:
++        sizes = np.full(number, remaining // number, dtype=np.int64)
++        sizes[:remaining % number] += 1
++        edges = np.r_[k, k + np.cumsum(sizes)]
++    else:
++        edges = np.array([k], dtype=np.int64)
++    cuts = edges[(edges > 0) & (edges < n)]
++    layout_ns = time.perf_counter_ns() - begin
++
++    t = time.perf_counter_ns()
++    fallback = False
++    if algorithm == 'lexsort':
++        order = np.lexsort((ids, scores))
++    elif algorithm == 'multiselect':
++        if len(cuts):
++            ranks = np.unique(np.r_[cuts - 1, cuts])
++            order = np.argpartition(scores, ranks)
++            # Both ranks adjacent to every boundary are fixed order statistics.
++            # A cut through ties needs the original deterministic ID convention.
++            fallback = bool(np.any(scores[order[cuts - 1]] == scores[order[cuts]]))
++            if fallback:
++                order = np.lexsort((ids, scores))
++        else:
++            order = np.arange(n, dtype=np.int64)
++    else:
++        raise ValueError('Unknown partition implementation')
++    ordering_ns = time.perf_counter_ns() - t
++    t = time.perf_counter_ns()
++    ranked = ids[order]
++    gather_ns = time.perf_counter_ns() - t
++    t = time.perf_counter_ns()
++    H = ranked[:k]
++    cells = [ranked[int(a):int(b)] for a, b in zip(edges[:-1], edges[1:])]
++    slicing_ns = time.perf_counter_ns() - t
++    return H, cells, dict(
++        partition_layout_ns=layout_ns, partition_ordering_ns=ordering_ns,
++        partition_id_gather_ns=gather_ns, partition_slicing_ns=slicing_ns,
++        partition_total_ns=time.perf_counter_ns() - begin,
++        partition_tie_fallback=int(fallback), partition_id_copy_count=n,
++        partition_original_vector_copy_count=0)
++
++
++def profile_original(scores, ids, k, groups=8):
++    """Instrument the original expressions, without the new layout machinery."""
++    begin = time.perf_counter_ns()
++    order = np.lexsort((ids, scores))
++    sorting_ns = time.perf_counter_ns() - begin
++    t = time.perf_counter_ns()
++    ranked = ids[order]
++    gather_ns = time.perf_counter_ns() - t
++    t = time.perf_counter_ns()
++    H = ranked[:k]
++    cells = [x for x in np.array_split(ranked[k:], min(groups, max(1, len(ids)-k))) if len(x)]
++    slicing_ns = time.perf_counter_ns() - t
++    return H, cells, dict(original_sort_ns=sorting_ns,
++        original_id_gather_ns=gather_ns, original_slicing_ns=slicing_ns,
++        original_sorting_and_strata_ns=time.perf_counter_ns()-begin)
+diff --git a/mech_annulus_project_clean/revision/upgrade_profile.py b/mech_annulus_project_clean/revision/upgrade_profile.py
+new file mode 100644
+index 0000000..719d4fb
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_profile.py
+@@ -0,0 +1,36 @@
++"""Diagnostic phase timing, separate from production latency comparisons."""
++import time
++import numpy as np
++from scipy.spatial.distance import cdist
++from sprint_estimator import estimate_strata
++from upgrade_partition import profile_original
++
++
++def profile_current(current,q,budget,rng):
++    begin=time.perf_counter_ns()
++    score=current.projection.query(q)
++    H,cells,stages=profile_original(score['d2hat'],current.id_array,budget//4,8)
++    stages.update(projection_ns=score['projection_ns'],low_dim_score_ns=score['low_dim_score_ns'])
++    detail={}
++    ids_seen=[]
++    def kernel(ids):
++        t=time.perf_counter_ns()
++        ids_seen.extend(np.asarray(ids,dtype=np.int64).tolist())
++        detail['kernel_id_accounting_ns']=time.perf_counter_ns()-t
++        t=time.perf_counter_ns()
++        selected=current.points[ids]
++        detail['selected_original_vector_copy_ns']=time.perf_counter_ns()-t
++        detail['selected_original_vector_copy_count']=len(ids)
++        t=time.perf_counter_ns()
++        d2=cdist(np.asarray(q,dtype=np.float64)[None,:],selected,'sqeuclidean')[0]
++        detail['original_distance_ns']=time.perf_counter_ns()-t
++        t=time.perf_counter_ns()
++        logs=-d2/(2*current.h*current.h)
++        detail['kernel_log_ns']=time.perf_counter_ns()-t
++        return logs
++    estimate=estimate_strata(current.n,H,cells,budget,rng,kernel,allocation='proportional')
++    stages.update({k:int(estimate[k]) for k in ['sampling_ns','allocation_ns','kernel_ns','aggregation_ns']})
++    total=time.perf_counter_ns()-begin
++    return dict(profile_total_ns=total,log_estimate=estimate['log_estimate'],
++        actual_kernel_evaluations=len(ids_seen),**stages,**detail,
++        scope='Instrumented diagnostic; nested phase times must not be added twice')
+diff --git a/mech_annulus_project_clean/revision/upgrade_run.py b/mech_annulus_project_clean/revision/upgrade_run.py
+new file mode 100644
+index 0000000..e1ddbde
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_run.py
+@@ -0,0 +1,214 @@
++"""Bounded preregistered validation/formal runner on the frozen server setup.
++
++Run serially on the original hardware. Original test/audit remain exposed.
++Raw repetition rows retain actual work counts and include all online phases.
++"""
++import argparse
++import copy
++import hashlib
++import json
++import os
++import platform
++import subprocess
++import time
++from pathlib import Path
++import numpy as np
++import core as c
++import run as r
++from sprint_common import load_data, save_json, DATASETS
++from sprint_evaluator import SprintEvaluator
++from sprint_projection import ProjectionScore
++from upgrade_evaluator import EquivalentPartitionEvaluator
++from upgrade_ann import ANNControlledEvaluator, conditional_variance
++from upgrade_partition import profile_original, split_scores
++from upgrade_profile import profile_current
++import deann_adapter as da
++
++CFG=dict(score='projection64',grouping='quantile',full_target=True,
++         H_fraction=.25,J=8,allocation='proportional')
++
++
++def json_default(value):
++    if isinstance(value,np.generic):return value.item()
++    if isinstance(value,np.ndarray):return value.tolist()
++    raise TypeError(type(value).__name__)
++
++
++def emit(file,row):
++    file.write(json.dumps(row,default=json_default)+'\n')
++
++
++def environment():
++    import scipy,torch
++    return dict(unix=time.time(),platform=platform.platform(),numpy=np.__version__,
++        scipy=scipy.__version__,torch=torch.__version__,faiss=da.faiss.__version__,
++        cpu=subprocess.check_output(['lscpu'],text=True),load_average=os.getloadavg(),
++        threads={k:os.environ.get(k) for k in ['OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS']},
++        git_head=r.git_head(),git_status=subprocess.check_output(['git','status','--short'],cwd=r.ROOT,text=True),
++        source_sha256={p.name:r.sha(p) for p in Path(__file__).parent.glob('*.py')})
++
++
++def anchors(data,prior,scale_n=None):
++    original=json.loads((prior/'inputs/original_final_config.json').read_text())['datasets'][data['name']]['deann']
++    frozen=(json.loads((prior/'scaling_validation'/str(scale_n)/'selection.json').read_text())
++        if scale_n else json.loads((prior/'DEANN_FROZEN.json').read_text())['datasets'][data['name']])
++    variants={};seen={}
++    for label,x in [('O',original)]+[('E' if x['selected_by']=='mean_relative_error' else 'T',x) for x in frozen['anchors']]:
++        pair=(int(x['nprobe']),float(x['near_fraction']))
++        if pair in seen:
++            variants[seen[pair]]['aliases'].append(label)
++        else:
++            variants[label]=dict(nprobe=pair[0],near_fraction=pair[1],aliases=[label]);seen[pair]=label
++    return variants
++
++
++def construct(data,scale_n,prior,phase):
++    current=SprintEvaluator(data);current.ensure_projection()
++    queries=data['arrays'][phase];rawids=data['split'][phase]
++    if scale_n:
++        if data['name']!='cifar10_gist512':raise ValueError('Only existing GIST scale sequence')
++        frozen=json.loads((prior/'scaling_ids.json').read_text())
++        assert r.sha(r.DATA/r.FILES[data['name']])==frozen['raw_sha256']
++        raw=r.raw_dataset(data['name'])
++        ids=np.asarray(frozen['reference_order'][:scale_n],dtype=np.int64)
++        refs=(2*data['scaler'].transform(raw[ids])+data['anchor']).astype(np.float32)
++        current.points=np.ascontiguousarray(refs,dtype=np.float64)
++        current.n=scale_n;current.id_array=np.arange(scale_n,dtype=np.int64)
++        current.projection=ProjectionScore(refs,data['arrays']['train'],r.JOBROOT/'upgrade_models'/str(scale_n))
++        if phase=='audit':
++            rawids=np.asarray(frozen['query_ids'],dtype=np.int64)
++            queries=(2*data['scaler'].transform(raw[rawids])+data['anchor']).astype(np.float32)
++        assert not set(ids)&set(rawids)
++    fast=EquivalentPartitionEvaluator.__new__(EquivalentPartitionEvaluator)
++    fast.__dict__=current.__dict__.copy()
++    return current,fast,queries,rawids
++
++
++def run(args):
++    if any(os.environ.get(k)!='8' for k in ['OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS']):
++        raise RuntimeError('Set all BLAS/OMP thread counts to 8 before Python starts')
++    if args.phase!='validation' and not (args.out.parent/'UPGRADE_FREEZE.json').exists():
++        raise RuntimeError('Formal evaluation requires a validation decision and freeze')
++    args.out.mkdir(parents=True,exist_ok=False)
++    save_json(args.out/'START.json',environment())
++    frozen_methods=None
++    if args.phase!='validation':
++        frozen_methods=json.loads((args.out.parent/'UPGRADE_FREEZE.json').read_text())
++    datasets=['cifar10_gist512'] if args.scale else DATASETS
++    budgets=([64,128,256] if args.phase=='validation' or args.scale else [32,64,128,256,512])
++    interleave=np.random.default_rng(20260920)
++    for name in datasets:
++        if args.phase=='audit' and name=='amazon':continue
++        folder=args.out/name;folder.mkdir()
++        data=load_data(name,args.phase)
++        current,fast,queries,rawids=construct(data,args.scale,args.prior,args.phase)
++        if args.smoke:queries=queries[:2];rawids=rawids[:2]
++        control=c.Evaluator(current.points,current.h,current.old.radius,8)
++        variants=anchors(data,args.prior,args.scale)
++        # Clone one deterministic fitted IVF so each anchor retains its own
++        # nprobe while all controlled and official methods use identical tables.
++        first,annoff=da.build(current.points)
++        anns={};hybrids={}
++        for label,v in variants.items():
++            ann=copy.copy(first);ann.index=da.faiss.clone_index(first.index)
++            ann.set_query_arguments(v['nprobe']);anns[label]=ann
++            hybrids[label]=ANNControlledEvaluator(current.points,current.h,current.projection,ann)
++        # Truth stays exclusively in the evaluation harness.
++        truths=[c.exact_log_mean(current.points,q,current.h) for q in queries]
++        save_json(folder/'OFFLINE.json',dict(ann=annoff,projection=current.projection.offline_record,
++            n=current.n,d=current.points.shape[1],h=current.h,R=current.old.radius,
++            variants=variants,query_rows=rawids,phase=args.phase,exposed_queries=args.phase!='validation'))
++        with (folder/'partition_checks.jsonl').open('w') as checks:
++            for qi,q in enumerate(queries):
++                z=current.projection.query(q)
++                for M in budgets:
++                    for rep in range(3):
++                        for implementation in interleave.permutation(['original','multiselect']):
++                            if implementation=='original':
++                                H,a,detail=profile_original(z['d2hat'],current.id_array,M//4,8)
++                            else:
++                                H2,b,newdetail=split_scores(z['d2hat'],current.id_array,M//4,8)
++                        assert np.array_equal(np.sort(H),np.sort(H2))
++                        assert all(np.array_equal(np.sort(x),np.sort(y)) for x,y in zip(a,b))
++                        emit(checks,dict(query_id=qi,budget=M,repeat=rep,members_equal=True,**detail,**newdetail))
++        with (folder/'current_profile.jsonl').open('w') as profile:
++            for qi,q in enumerate(queries):
++                reference=current.evaluate(q,128,np.random.default_rng(qi*100003),CFG)
++                for rep in range(3):
++                    row=profile_current(current,q,128,np.random.default_rng(qi*100003))
++                    assert abs(row['log_estimate']-reference['log_estimate'])<1e-12
++                    emit(profile,dict(query_id=qi,budget=128,repeat=rep,**row))
++        with (folder/'raw_queries.jsonl').open('w') as rawout, (folder/'ann_variance.jsonl').open('w') as varout:
++            for M in budgets:
++                for seed in range(1 if args.smoke else 5):
++                    official={}
++                    for label,v in variants.items():
++                        official[label]=da.make_estimator(current.points,current.h,anns[label],M,v['near_fraction'],v['nprobe'],seed)[:3]
++                    methods=['exact','uniform_mc','exact_annular','projected_current']
++                    if frozen_methods is None or frozen_methods.get('path_a',False):
++                        methods.append('projected_fast')
++                    methods+=['official_'+label for label in variants]
++                    if not args.scale:
++                        for label,v in variants.items():
++                            if any(x in v['aliases'] for x in ['E','T']):
++                                if frozen_methods is None or label in frozen_methods.get('path_b_anchors',[]):
++                                    methods+=['ann_'+label+'_single','ann_'+label+'_multi']
++                    def one(method,q,qi):
++                        rng=np.random.default_rng(seed+qi*100003)
++                        if method=='projected_current':return current.evaluate(q,M,rng,CFG)
++                        if method=='projected_fast':return fast.evaluate(q,M,rng,CFG)
++                        if method.startswith('official_'):
++                            label=method.split('_')[1];est,k,m=official[label]
++                            return da.evaluate(est,anns[label],q,k,m)
++                        if method.startswith('ann_'):
++                            _,label,mode=method.split('_');v=variants[label]
++                            return hybrids[label].evaluate(q,M,rng,v['near_fraction'],v['nprobe'],mode)
++                        return control.evaluate(method,q,M,rng)
++                    for method in methods:one(method,queries[0],0)
++                    for qi,q in enumerate(queries):
++                        if seed==0 and not args.scale:
++                            # Offline controls keep all observed kernels out of
++                            # the online evaluators; stable scale cancels in ratios.
++                            logs=-c.sqdist(current.points,q)/(2*current.h**2)
++                            values=np.exp(logs-logs.max())
++                            for label,v in variants.items():
++                                if not any(x in v['aliases'] for x in ['E','T']):continue
++                                p=[]
++                                for mode in ['single','multi']:
++                                    H,cells,_,_,_=hybrids[label].prepare(q,M,v['near_fraction'],v['nprobe'],mode)
++                                    assert len(np.unique(np.concatenate([H]+cells)))==current.n
++                                    p.append((H,cells))
++                                assert np.array_equal(p[0][0],p[1][0])
++                                v0=conditional_variance(values,current.n,p[0][1],M-len(p[0][0]))
++                                v1=conditional_variance(values,current.n,p[1][1],M-len(p[1][0]))
++                                emit(varout,dict(query_id=qi,budget=M,anchor=label,H=p[0][0],
++                                    single_variance_scaled=v0,multi_variance_scaled=v1,
++                                    variance_ratio=v1/v0 if v0 else None,
++                                    log_kernel_scale=float(logs.max())))
++                        for rep in range(3):
++                            for method in interleave.permutation(methods):
++                                row=one(str(method),q,qi)
++                                if 'full_dimension_distance_or_dot_evaluations' not in row:
++                                    row['full_dimension_distance_or_dot_evaluations']=row['distance_evaluations']
++                                row.setdefault('low_dim_score_evaluations',0)
++                                log_estimate=row.pop('log_estimate')
++                                emit(rawout,dict(dataset=name,phase=args.phase,n=current.n,
++                                    query_id=qi,raw_row_id=int(rawids[qi]),budget=M,seed=seed,
++                                    repeat=rep,method=str(method),
++                                    **c.errors(log_estimate,truths[qi]),**row))
++                        if qi%20==0:
++                            rawout.flush();varout.flush()
++                            print(json.dumps(dict(dataset=name,phase=args.phase,budget=M,seed=seed,query=qi)),flush=True)
++                    del official
++        save_json(folder/'DONE.json',dict(unix=time.time(),queries=len(queries),budgets=budgets))
++    save_json(args.out/'DONE.json',dict(unix=time.time(),scope='smoke only' if args.smoke else 'protocol run'))
++
++
++if __name__=='__main__':
++    ap=argparse.ArgumentParser()
++    ap.add_argument('--phase',choices=['validation','test','audit'],default='validation')
++    ap.add_argument('--out',type=Path,required=True)
++    ap.add_argument('--prior',type=Path,required=True)
++    ap.add_argument('--scale',type=int,choices=[1000,1800,5000,10000,20000])
++    ap.add_argument('--smoke',action='store_true')
++    run(ap.parse_args())
+diff --git a/mech_annulus_project_clean/revision/upgrade_verify.py b/mech_annulus_project_clean/revision/upgrade_verify.py
+new file mode 100644
+index 0000000..8e5bf36
+--- /dev/null
++++ b/mech_annulus_project_clean/revision/upgrade_verify.py
+@@ -0,0 +1,81 @@
++"""Verify a completed real run independently of the aggregate analysis."""
++import argparse
++import collections
++import hashlib
++import json
++from pathlib import Path
++
++
++def verify(root):
++    done = json.loads((root / 'DONE.json').read_text())
++    assert done['scope'] == 'protocol run', 'Smoke is not evidence'
++    report = {}
++    for folder in sorted(root.iterdir()):
++        if not folder.is_dir() or not (folder / 'raw_queries.jsonl').exists():
++            continue
++        meta = json.loads((folder / 'OFFLINE.json').read_text())
++        complete = json.loads((folder / 'DONE.json').read_text())
++        nq = complete['queries']
++        budgets = complete['budgets']
++        seen = collections.defaultdict(set)
++        methods = set()
++        work = collections.defaultdict(lambda: [0, 0, 0])
++        count = 0
++        digest = hashlib.sha256()
++        with (folder / 'raw_queries.jsonl').open('rb') as f:
++            for line in f:
++                digest.update(line)
++                r = json.loads(line)
++                m = r['method']
++                key = (r['budget'], r['seed'], r['repeat'], r['query_id'])
++                assert key not in seen[m], 'Duplicated observation'
++                seen[m].add(key)
++                methods.add(m)
++                assert r['raw_row_id'] == meta['query_rows'][r['query_id']]
++                assert r['time_ns'] > 0
++                assert r['relative_error'] >= 0
++                assert r['kernel_evaluations'] >= 0
++                if m in ('projected_current', 'projected_fast') or m.startswith('ann_'):
++                    assert r['kernel_evaluations'] == r['actual_samples'] == r['budget']
++                    assert sum(r['allocation']) + r['H_count'] == r['budget']
++                    assert sum(r['layer_sizes']) + r['H_count'] == r['n']
++                    assert r.get('unassigned_ns', 0) >= 0
++                if m.startswith('ann_'):
++                    assert r['ann_duplicate_returned'] >= 0
++                    assert r['ann_invalid_returned'] >= 0
++                    assert r['actual_H_count'] == r['ann_valid_returned'] - r['ann_duplicate_returned']
++                    assert r['ann_valid_returned'] + r['ann_invalid_returned'] == r['requested_neighbors']
++                    expected = (r['ann_distance_evaluations'] +
++                                r['ann_recomputed_original_distances'] +
++                                r['original_remainder_distance_evaluations'] +
++                                r['full_dimension_projection_inner_products'])
++                    assert expected == r['full_dimension_distance_or_dot_evaluations']
++                work[m][0] += r['kernel_evaluations']
++                work[m][1] += r['full_dimension_distance_or_dot_evaluations']
++                work[m][2] += r['low_dim_score_evaluations']
++                count += 1
++        expected = {(b, s, rep, q) for b in budgets for s in range(5)
++                    for rep in range(3) for q in range(nq)}
++        assert all(keys == expected for keys in seen.values()), 'Incomplete method curve'
++        checks = [json.loads(line) for line in (folder / 'partition_checks.jsonl').read_text().splitlines()]
++        assert len(checks) == nq * len(budgets) * 3
++        assert all(x['members_equal'] for x in checks)
++        report[folder.name] = dict(queries=nq, budgets=budgets, rows=count,
++            methods=sorted(methods), sha256=digest.hexdigest(),
++            membership_comparisons=len(checks),
++            tie_fallback_comparisons=sum(x['partition_tie_fallback'] for x in checks),
++            total_work_by_method=dict(work),
++            work_order=['kernel_evaluations', 'original_space_distances_or_dots', 'low_dim_scores'])
++    assert report
++    return dict(passed=True, scope='Record completeness and accounting; not statistical significance',
++                datasets=report)
++
++
++if __name__ == '__main__':
++    p = argparse.ArgumentParser()
++    p.add_argument('root', type=Path)
++    p.add_argument('--out', type=Path, required=True)
++    args = p.parse_args()
++    result = verify(args.root)
++    args.out.write_text(json.dumps(result, indent=2))
++    print(json.dumps(dict(passed=True, datasets=list(result['datasets']))))

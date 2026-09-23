@@ -1,0 +1,203 @@
+{
+  "path_a": true,
+  "path_b": false,
+  "qualified_a": [
+    {
+      "dataset": "cifar10_gist512",
+      "phase": "audit",
+      "n": 20000,
+      "budgets": [
+        64,
+        128,
+        256
+      ]
+    }
+  ],
+  "statistical_b": [
+    {
+      "dataset": "amazon",
+      "phase": "test",
+      "n": 720,
+      "anchor": "O",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "amazon",
+      "phase": "test",
+      "n": 720,
+      "anchor": "T",
+      "budgets": [
+        32,
+        64,
+        128,
+        256
+      ]
+    },
+    {
+      "dataset": "cifar10",
+      "phase": "audit",
+      "n": 1800,
+      "anchor": "E",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "cifar10",
+      "phase": "audit",
+      "n": 1800,
+      "anchor": "T",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "cifar10",
+      "phase": "test",
+      "n": 1800,
+      "anchor": "E",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "cifar10",
+      "phase": "test",
+      "n": 1800,
+      "anchor": "T",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "cifar10_gist512",
+      "phase": "audit",
+      "n": 1800,
+      "anchor": "E",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "cifar10_gist512",
+      "phase": "audit",
+      "n": 1800,
+      "anchor": "T",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "cifar10_gist512",
+      "phase": "test",
+      "n": 1800,
+      "anchor": "E",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "cifar10_gist512",
+      "phase": "test",
+      "n": 1800,
+      "anchor": "T",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "isolet",
+      "phase": "audit",
+      "n": 1800,
+      "anchor": "E",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "isolet",
+      "phase": "audit",
+      "n": 1800,
+      "anchor": "T",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "isolet",
+      "phase": "test",
+      "n": 1800,
+      "anchor": "E",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    },
+    {
+      "dataset": "isolet",
+      "phase": "test",
+      "n": 1800,
+      "anchor": "T",
+      "budgets": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ]
+    }
+  ],
+  "computational_b": [],
+  "qualified_b": [],
+  "decision": "A",
+  "interpretation": "Project decision criteria, not conference acceptance thresholds"
+}

@@ -1,0 +1,44 @@
+{
+  "dataset": "amazon",
+  "raw_shape": [
+    1500,
+    10000
+  ],
+  "split_counts": {
+    "train": 500,
+    "reference": 720,
+    "validation": 80,
+    "test": 200
+  },
+  "data_file": "Amazon_initial_50_30_10000/Amazon_initial_50_30_10000.arff",
+  "data_sha256": "fd757a3517a850e5af8136c343fde492dd80f02af1e3c8e995b6da1154324aa5",
+  "training": {
+    "tables": 12,
+    "bits": 5,
+    "epochs": 24,
+    "batch_size": 128,
+    "lr": 0.001,
+    "alpha": 1.0,
+    "beta": 0.1,
+    "gamma_balance": 0.1,
+    "gamma_decorrelation": 0.1,
+    "device": "cpu"
+  },
+  "model_seed": 20260915,
+  "model_sha256": "90ab7d213a65cd95a20777e0290767a56088991a77d6b5123eef98d8948d3e71",
+  "preprocessing_sha256": "3e12b7e515ce0b95541d6407dcf61580b1d3fda2f99cc21ea5108e766b89f15b",
+  "split_sha256": "532e128baa125a7b627fce1f8948ce5f7500acadc90aeb57dcb22ef8adb3148a",
+  "train_seconds": 2.310318298637867,
+  "validation_calibration_seconds": 0.26880575343966484,
+  "radius": 38.19126391589072,
+  "bandwidth": 8.654500481666629,
+  "delta": 3.168128728866577,
+  "layers": 8,
+  "min_collisions": 2,
+  "hamming_probe": 2,
+  "radius_rule": "median validation-query 70th distance percentile",
+  "bandwidth_rule": ".25 * median validation-query 25th distance percentile",
+  "preprocessing": "MinMax fitted on training only; common 2*x+training max-norm anchor",
+  "code_at_training": "f3332318aa5ffdece0aa0c14d99cc19f8b905bea",
+  "peak_rss_kib": 1155860
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "dataset": "isolet",
+    "url": "https://raw.githubusercontent.com/jingenyan/mech-annulus-kde/34347a411e7475ebce86f05189e112ad8975e508/data/isolet/isolet1+2+3+4.data",
+    "bytes": 32445949,
+    "sha256": "aa935cc98ec22ee689aa5b2ddf1fdce074692f7016f0255f0982df133ccbab38",
+    "match": true
+  },
+  {
+    "dataset": "cifar10",
+    "url": "https://raw.githubusercontent.com/jingenyan/mech-annulus-kde/34347a411e7475ebce86f05189e112ad8975e508/data/cifar-10-batches-py/data_batch_1",
+    "bytes": 31035704,
+    "sha256": "54636561a3ce25bd3e19253c6b0d8538147b0ae398331ac4a2d86c6d987368cd",
+    "match": true
+  },
+  {
+    "dataset": "cifar10_gist512",
+    "url": "https://media.githubusercontent.com/media/jingenyan/mech-annulus-kde/34347a411e7475ebce86f05189e112ad8975e508/data/cifar10-Gist512/Cifar10-Gist512.mat",
+    "bytes": 133777423,
+    "sha256": "0d55fa328e8fe5a262498a5967f01f91d0ab5e053ddbbe49e473609a22cf5aff",
+    "match": true
+  },
+  {
+    "dataset": "amazon",
+    "url": "https://raw.githubusercontent.com/jingenyan/mech-annulus-kde/34347a411e7475ebce86f05189e112ad8975e508/data/Amazon_initial_50_30_10000/Amazon_initial_50_30_10000.arff",
+    "bytes": 30375550,
+    "sha256": "fd757a3517a850e5af8136c343fde492dd80f02af1e3c8e995b6da1154324aa5",
+    "match": true
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "created_unix": 1789837448.7204044,
+  "n": 10000,
+  "nlist": 32,
+  "anchors": [
+    {
+      "nprobe": 16,
+      "near_fraction": 0.125,
+      "selected_by": "mean_relative_error"
+    },
+    {
+      "nprobe": 1,
+      "near_fraction": 0.125,
+      "selected_by": "median_time_ns"
+    }
+  ],
+  "grid_sha256": "d9fbb4ff73d7fc8ef4a9ec4a1719b308aa45b08535bda37ad99ddeb2c7dbf8f9",
+  "protocol_sha256": "f6e72d2718566297e3a4c565cd3bde386e1f1b24e3be04b56708fd3a36b1c4e8",
+  "budgets": [
+    64,
+    128,
+    256
+  ],
+  "validation_queries": 80,
+  "sampling_seeds": [
+    0,
+    1
+  ]
+}

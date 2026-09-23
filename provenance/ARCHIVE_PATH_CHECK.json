@@ -1,0 +1,14 @@
+[
+  {
+    "archive": "reproduction/upgrade/remote_source.tar.gz",
+    "unsafe_paths_or_links": []
+  },
+  {
+    "archive": "reproduction/base/audit_reference_inputs.tar.gz",
+    "unsafe_paths_or_links": []
+  },
+  {
+    "archive": "reproduction/base/code_assets.tar.gz",
+    "unsafe_paths_or_links": []
+  }
+]

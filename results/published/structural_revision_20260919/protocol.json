@@ -1,0 +1,35 @@
+{
+  "created_unix": 1789833196.3846352,
+  "projection_seeds": [
+    20260916,
+    20260917,
+    20260918
+  ],
+  "budgets": [
+    64,
+    128,
+    256
+  ],
+  "sampling_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "queries_per_phase": 200,
+  "cfg": {
+    "score": "projection64",
+    "J": 8,
+    "H_fraction": 0.25,
+    "grouping": "quantile",
+    "full_target": true,
+    "allocation": "proportional"
+  },
+  "selection": "None: all seeds reported; original manuscript seed unchanged",
+  "phases": "All four existing test sets and three previously unused audit sets; Amazon has no audit",
+  "timing": "One complete call logged for accounting only; not compared with original three-repeat latencies",
+  "script_sha256": "950a3f3e619536e908ccc9f082b6c2c4638b562665f24983575d7c62ce42b7d6",
+  "scientific_base": "59d86dbfaaeebb7bdaace151afcec047f3e1a360",
+  "environment": "Linux autodl-pro-7898c712fed4 5.15.0-119-generic #129-Ubuntu SMP Fri Aug 2 19:25:20 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux\n"
+}

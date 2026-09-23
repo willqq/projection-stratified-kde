@@ -1,0 +1,13 @@
+{
+  "source": "Formal launcher settings confirmed by the executing parent agent on 2026-09-16",
+  "python": "/root/autodl-tmp/icassp_revision_20260915/.venv/bin/python",
+  "OMP_NUM_THREADS": "8",
+  "OPENBLAS_NUM_THREADS": "8",
+  "MKL_NUM_THREADS": "8",
+  "NUMEXPR_NUM_THREADS": "8",
+  "CUDA_VISIBLE_DEVICES": "",
+  "LD_LIBRARY_PATH": "/root/autodl-tmp/icassp_revision_20260915/.venv/lib",
+  "torch_threads_set_in_code": 8,
+  "faiss_threads_set_in_code": 8,
+  "formal_execution": "Serial basic and DEANN evaluation; no concurrent experimental timing"
+}

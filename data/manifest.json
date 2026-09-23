@@ -1,0 +1,54 @@
+[
+  {
+    "dataset": "isolet",
+    "relative_path": "isolet/isolet1+2+3+4.data",
+    "bytes": 32445949,
+    "sha256": "aa935cc98ec22ee689aa5b2ddf1fdce074692f7016f0255f0982df133ccbab38",
+    "raw_shape": [
+      6238,
+      617
+    ],
+    "distributed": false,
+    "split_sha256": "af5fc0a3c2f9c5b83efbce6b8eec7195056da1d2b3766c7e2f3f663b537d1623",
+    "preprocessing_sha256": "88d26b69104ab6e79699fa192f2f68682e6677a68f2a733b557eab37277013ae"
+  },
+  {
+    "dataset": "cifar10",
+    "relative_path": "cifar-10-batches-py/data_batch_1",
+    "bytes": 31035704,
+    "sha256": "54636561a3ce25bd3e19253c6b0d8538147b0ae398331ac4a2d86c6d987368cd",
+    "raw_shape": [
+      10000,
+      3072
+    ],
+    "distributed": false,
+    "split_sha256": "5bfde411d345fe56c2d4ebcf29ad1cca71b7ed6177e09c48b453aab543f2e80c",
+    "preprocessing_sha256": "83b63f8a7bf35d84057e862534c71a4408d6a6e2161f21e007d21d83f26196e7"
+  },
+  {
+    "dataset": "cifar10_gist512",
+    "relative_path": "cifar10-Gist512/Cifar10-Gist512.mat",
+    "bytes": 133777423,
+    "sha256": "0d55fa328e8fe5a262498a5967f01f91d0ab5e053ddbbe49e473609a22cf5aff",
+    "raw_shape": [
+      60000,
+      512
+    ],
+    "distributed": false,
+    "split_sha256": "661adb1f6c85c01e57a910704dedf205f2578e1af25d6fea13b88dcd99f55bcf",
+    "preprocessing_sha256": "603e10abd6b71c3f915534962ac462ed22278224fd5b698a156653cb42e31229"
+  },
+  {
+    "dataset": "amazon",
+    "relative_path": "Amazon_initial_50_30_10000/Amazon_initial_50_30_10000.arff",
+    "bytes": 30375550,
+    "sha256": "fd757a3517a850e5af8136c343fde492dd80f02af1e3c8e995b6da1154324aa5",
+    "raw_shape": [
+      1500,
+      10000
+    ],
+    "distributed": false,
+    "split_sha256": "532e128baa125a7b627fce1f8948ce5f7500acadc90aeb57dcb22ef8adb3148a",
+    "preprocessing_sha256": "3e12b7e515ce0b95541d6407dcf61580b1d3fda2f99cc21ea5108e766b89f15b"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "matched_frozen_evaluations": 200,
+  "same_selected_ids": true,
+  "same_H": true,
+  "same_estimates": true,
+  "budgets": [
+    32,
+    64,
+    128,
+    256,
+    512
+  ],
+  "census_passed": true
+}

@@ -1,0 +1,13 @@
+{
+  "formal_experiment_commit": "f872802ae4cca95ec69376d548c8389627de8761",
+  "remote_delivery_commit": "757d1801748d5b19ca4940d7a99d89d0b9f86ed8",
+  "local_snapshot_commit": "82882dbb0575a0f3e1578a2f19fb95aa91076975",
+  "raw_archive_reporting_snapshot": "94d6bb8",
+  "post_formal_changes": "Analysis, checks and figures only; raw experiment source and results unchanged.",
+  "source_identity": "All upgrade_*.py match local and delivered remote source bytes.",
+  "sha256": {
+    "remote_source.tar.gz": "4f1a3c87897825ff8cf6df2040809ff1e4e731fbef4247f186ec551866591714",
+    "remote_upgrade.patch": "881b4ace79279c8e02fa7a4e311ea15f9b31c4c9069f1de7cd83a75f047f45a3",
+    "raw_remote_results.tar.gz": "3528471607fb1068147d95b595dfb00c1c45314ca859fa34b80398fbe4460b6c"
+  }
+}

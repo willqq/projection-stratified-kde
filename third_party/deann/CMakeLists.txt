@@ -1,0 +1,75 @@
+cmake_minimum_required(VERSION 3.16)
+project(deann LANGUAGES CXX)
+
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
+
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic")
+  set(CMAKE_CXX_FLAGS_RELEASE "-march=native -O3")
+  set(CMAKE_CXX_FLAGS_DEBUG "-g -fsanitize=address -fno-omit-frame-pointer")
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_SHARED_LINKER_FLAGS "-shared-libasan")
+    set(CMAKE_MODULE_LINKER_FLAGS "-shared-libasan")
+  endif()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic")
+  set(CMAKE_CXX_FLAGS_RELEASE "-march=native -O3")
+  set(CMAKE_CXX_FLAGS_DEBUG "-g -fsanitize=address -fno-omit-frame-pointer")
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_SHARED_LINKER_FLAGS "-shared-libasan")
+    set(CMAKE_MODULE_LINKER_FLAGS "-shared-libasan")
+  endif()
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+  set(CMAKE_CXX_FLAGS_RELEASE "-march=native -O3")
+  set(CMAKE_CXX_FLAGS_DEBUG "-g")
+else()
+  message(WARNING "Unknown compiler ``${CMAKE_CXX_COMPILER_ID}'' detected; compiler flags are not set")
+endif()
+
+
+find_package(pybind11 REQUIRED)
+find_package(Doxygen QUIET)
+find_package(Sphinx QUIET)
+find_package(Catch2 QUIET)
+
+if (NOT DEFINED MKL_ROOT)
+  if (DEFINED ENV{MKL_ROOT})
+    set(MKL_ROOT $ENV{MKL_ROOT} CACHE PATH "Root of MKL")
+  else()
+    message(FATAL_ERROR "Please set the MKL_ROOT to point to MKL")
+  endif()
+endif()
+find_path(MKL_INCLUDE_DIR mkl_cblas.h HINTS ${MKL_ROOT}/include)
+include_directories(${MKL_INCLUDE_DIR})
+message(STATUS "System: ${CMAKE_SYSTEM_NAME}")
+
+option(ENABLE_MKL_MULTITHREADING "Enable GNU OpenMP multithreading for MKL" OFF) 
+
+find_library(MKL_ILP64 libmkl_intel_ilp64.so HINTS ${MKL_ROOT}/lib/intel64/ ${MKL_ROOT}/lib)
+find_library(MKL_SEQUENTIAL libmkl_sequential.so HINTS ${MKL_ROOT}/lib/intel64/ ${MKL_ROOT}/lib)
+find_library(MKL_GOMP libmkl_gnu_thread.so HINTS ${MKL_ROOT}/lib/intel64/ ${MKL_ROOT}/lib)
+find_library(MKL_CORE libmkl_core.so HINTS ${MKL_ROOT}/lib/intel64/ ${MKL_ROOT}/lib)
+if (ENABLE_MKL_MULTITHREADING)
+  set(MKL_LIBRARIES -Wl,--no-as-needed ${MKL_ILP64} ${MKL_GOMP} ${MKL_CORE} -lgomp -lpthread -lm -ldl)
+else()
+  set(MKL_LIBRARIES -Wl,--no-as-needed ${MKL_ILP64} ${MKL_SEQUENTIAL} ${MKL_CORE} -lpthread -lm -ldl)
+endif(ENABLE_MKL_MULTITHREADING)
+add_definitions(-DMKL_ILP64)
+
+# this definition can be enabled for some debuggery purposes
+# if you don't know why you should enable it, please ignore it
+# add_compile_definitions(DEANN_ENABLE_DEBUG_ACCESSORS)
+
+add_subdirectory(docs)
+add_subdirectory(src)
+add_subdirectory(test)
+
