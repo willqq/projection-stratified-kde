@@ -14,3 +14,10 @@ The final scientific estimator and saved observations are unchanged.
 
 No experiment configurations were reselected, and no paper result was replaced.
 No GitHub repository, release or online submission has been created by this step.
+
+## Initial GitHub upload
+
+Created the private repository `willqq/projection-stratified-kde` and attached
+the two checksum-verified experimental archives to release v0.1.0. Scientific
+code, configurations and observations are unchanged. Author-code licensing
+remains pending.

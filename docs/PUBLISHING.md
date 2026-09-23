@@ -1,31 +1,24 @@
-# Publishing this prepared repository
+# Repository and release
 
-Suggested repository name: `projection-stratified-kde`.
+Repository: https://github.com/willqq/projection-stratified-kde
 
-Suggested description:
-`Projection-guided remainder stratification for high-dimensional Gaussian kernel sums: code, frozen protocols and reproducibility artifacts.`
+The initial upload is private. Author-code license selection remains pending.
+The author can review the prepared tree before choosing a license and making it
+public. Third-party DEANN retains its MIT license.
 
-Create an empty GitHub repository under the author's chosen account. Do not
-initialize another README, .gitignore or license in the GitHub web form; the
-prepared tree already contains the documentation. Resolve the author-code
-license before a public release. The repository can be created private while
-the final release checks are completed.
+The source tree is in Git. Complete supplementary records are attached to the
+v0.1.0 release, with file sizes, SHA-256 digests and download links recorded in
+`provenance/RELEASE_ASSETS.json`. Private release downloads require repository
+access.
 
-Upload the prepared source tree using Git. Upload `experiment-records.tar.gz`
-and `upgrade-raw-records.tar.gz` as release attachments rather than committing
-them as large Git objects. Their SHA-256 values are in
-`provenance/RELEASE_ASSETS.json`. After the actual upload, record the real download
-URLs and tag/commit in the README; this package does not invent those URLs.
+The earlier `mech-annulus-kde` repository remains historical work. This repository
+packages the final projection method and preserves norm-angle code as a diagnostic.
 
-Retain the earlier `mech-annulus-kde` repository as historical work. The new
-repository explains the final projection-based method and keeps the old
-norm-angle implementation under the frozen experiment sources.
+Raw benchmark matrices are downloaded separately and retain their original
+terms. The original extraction provenance of the GIST feature matrix remains a
+documented limitation. The full manuscript PDF is not included; add its public
+link only after the authors select the manuscript version to share.
 
-Before publication, confirm the two authors' permission to license their code.
-Third-party DEANN keeps its MIT license. The GIST feature matrix is downloaded
-from the existing hash-locked mirror; its original extraction provenance remains
-a documented data limitation. No original feature matrices are uploaded as part
-of this new code tree.
-
-The full manuscript PDF and author metadata are not automatically published with
-the code. Add a manuscript link only after the authors choose the public version.
+A complete fresh Linux rebuild of official DEANN and the historical native
+extensions remains outside the verification performed for this packaging release.
+See `provenance/VERIFICATION.md` for the checks actually completed.

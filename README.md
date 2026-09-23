@@ -17,6 +17,8 @@ same-source audit queries support the increment. Complete-query advantages are
 limited to the measured operating regions. Narrow bandwidths weaken the gain.
 The historical norm-angle construction is retained as a diagnostic.
 
+Repository: https://github.com/willqq/projection-stratified-kde (initially private).
+
 ## Quick start
 
 Use Python 3.9–3.12 in a new virtual environment:
@@ -74,9 +76,9 @@ paper/tables/        frozen printed tables used only for output verification
 
 Complete per-query supplementary records, including timing repetitions and
 partition caches, are separate release attachments. Their names and checksums
-are recorded in `provenance/RELEASE_ASSETS.json`. The repository has not yet
-assigned a GitHub release URL; do not interpret the manifest as a live download
-link. The included inputs suffice to rebuild Tables 1/2 and the latency curves.
+are recorded in `provenance/RELEASE_ASSETS.json`. Download them from the
+[v0.1.0 release](https://github.com/willqq/projection-stratified-kde/releases/tag/v0.1.0); repository access is required while it
+remains private. The included inputs suffice to rebuild Tables 1/2 and the latency curves.
 
 ## Reproducibility boundaries
 

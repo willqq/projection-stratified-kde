@@ -4,13 +4,13 @@
     "bytes": 148001861,
     "sha256": "3528471607fb1068147d95b595dfb00c1c45314ca859fa34b80398fbe4460b6c",
     "upload_as": "GitHub Release attachment",
-    "download_url": null
+    "download_url": "https://github.com/willqq/projection-stratified-kde/releases/download/untagged-217a5069d9e5d9b722d4/upgrade-raw-records.tar.gz"
   },
   {
     "filename": "experiment-records.tar.gz",
     "bytes": 424304628,
     "sha256": "6eebb955839d5231cbbac859b03fb453903f06fd044b5b2eb66f1ab606172164",
     "upload_as": "GitHub Release attachment",
-    "download_url": null
+    "download_url": "https://github.com/willqq/projection-stratified-kde/releases/download/untagged-217a5069d9e5d9b722d4/experiment-records.tar.gz"
   }
 ]
